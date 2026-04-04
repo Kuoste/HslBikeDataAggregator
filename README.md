@@ -2,35 +2,83 @@
 
 C# Azure Functions backend for Helsinki city bike data aggregation.
 
-This service polls the HSL Digitransit API, stores aggregated bike station data in Azure Blob Storage, and serves read-optimised JSON endpoints for `HslBikeApp`.
-
-## Current status
-
-The repository now contains the initial Azure Functions scaffold for issue `#1`:
-
-- Azure Functions isolated worker project
-- `.NET 10` target with current isolated worker packages
-- shared models for station, snapshot, history, and hourly availability payloads
-- starter HTTP functions for stations, snapshots, availability, and destinations
-- starter timer function for station polling
-- local configuration placeholders for storage, Digitransit API key, polling cadence, and snapshot retention
-
-The read-side functions currently return empty collections until the storage-backed implementation is added.
+This service is the only component that holds the HSL Digitransit API key. It polls the Digitransit API, stores aggregated data in Azure Blob Storage, and serves read-optimised JSON endpoints consumed by `HslBikeApp`.
 
 ## Architecture
 
 - **Runtime:** Azure Functions v4, isolated worker model
 - **Language:** C# / .NET 10
 - **Storage:** Azure Blob Storage
-- **Frontend consumer:** `HslBikeApp`
+- **Frontend consumer:** [`HslBikeApp`](https://github.com/Kuoste/HslBikeApp)
 
-### Planned functions
+### Write/read separation
 
-- `GET /api/stations` - latest station availability
-- `GET /api/snapshots` - recent rolling snapshots for trend calculation
-- `GET /api/stations/{id}/availability` - hourly availability profile
-- `GET /api/stations/{id}/destinations` - popular destinations based on history data
-- `PollStations` timer trigger - polls HSL and writes aggregate blobs
+A timer-triggered function polls HSL every few minutes and writes JSON blobs to Azure Blob Storage. HTTP-triggered functions read those blobs directly, giving sub-second responses regardless of polling cadence.
+
+### Functions
+
+| Function | Trigger | Route | Purpose |
+|---|---|---|---|
+| `PollStations` | Timer (every 2–5 min) | — | Poll Digitransit, write station list, rolling snapshots, and hourly availability profiles to blob storage |
+| `ProcessStationHistory` | Timer (daily) | — | Fetch HSL open history data and write per-station destination blobs |
+| `GetStations` | HTTP GET | `/api/stations` | Return latest station availability |
+| `GetSnapshots` | HTTP GET | `/api/snapshots` | Return recent rolling snapshots for trend calculation |
+| `GetStationAvailability` | HTTP GET | `/api/stations/{id}/availability` | Return hourly availability profile (24 buckets) |
+| `GetStationDestinations` | HTTP GET | `/api/stations/{id}/destinations` | Return popular destinations for a station |
+
+All HTTP endpoints return JSON. CORS is enabled for `https://kuoste.github.io`.
+
+## API response shapes
+
+### `GET /api/stations` → `BikeStation[]`
+
+```json
+[
+  {
+    "id": "001",
+    "name": "Kaivopuisto",
+    "lat": 60.155,
+    "lon": 24.950,
+    "capacity": 20,
+    "bikesAvailable": 5,
+    "spacesAvailable": 15,
+    "isActive": true
+  }
+]
+```
+
+### `GET /api/snapshots` → `StationSnapshot[]`
+
+```json
+[
+  {
+    "timestamp": "2026-04-03T12:00:00+03:00",
+    "bikeCounts": { "001": 5, "002": 3 }
+  }
+]
+```
+
+### `GET /api/stations/{id}/availability` → `HourlyAvailability[]`
+
+```json
+[
+  { "hour": 8, "averageBikesAvailable": 5.2 }
+]
+```
+
+### `GET /api/stations/{id}/destinations` → `StationHistory[]`
+
+```json
+[
+  {
+    "departureStationId": "001",
+    "arrivalStationId": "023",
+    "tripCount": 42,
+    "averageDurationSeconds": 360.5,
+    "averageDistanceMetres": 1250.3
+  }
+]
+```
 
 ## Project layout
 
@@ -146,7 +194,4 @@ One-time Azure setup:
 - Add or update automated tests for delivered behaviour or repository configuration changes.
 - Run `dotnet build HslBikeDataAggregator.slnx` and the relevant tests before treating the issue as complete.
 - Do not consider an issue done until the branch is pushed, the pull request is open, and CI is passing.
-
-## Next milestone
-
-The next implementation step is issue `#2`: connect `PollStations` to the HSL Digitransit API, persist the latest station list and rolling snapshots to Blob Storage, and then wire the HTTP functions to real stored data.
+- Explicitly link pull requests to their GitHub issue using closing keywords such as `Closes #<issue>` to ensure the issue is automatically closed when the PR is merged.
