@@ -25,7 +25,13 @@ builder.Services
     .AddOptions<HistoryProcessingOptions>()
     .Configure<IConfiguration>((options, configuration) =>
     {
-        options.TripHistoryUrls = configuration.GetSection("HistoryProcessing:TripHistoryUrls").Get<string[]>() ?? [];
+        options.TripHistoryUrlPattern = configuration["HistoryProcessing:TripHistoryUrlPattern"] ?? HistoryProcessingOptions.DefaultTripHistoryUrlPattern;
+        options.RollingWindowMonthCount = Math.Max(
+            configuration.GetValue<int?>("HistoryProcessing:RollingWindowMonthCount") ?? HistoryProcessingOptions.DefaultRollingWindowMonthCount,
+            1);
+        options.AvailabilityProbeMonthCount = Math.Max(
+            configuration.GetValue<int?>("HistoryProcessing:AvailabilityProbeMonthCount") ?? HistoryProcessingOptions.DefaultAvailabilityProbeMonthCount,
+            options.RollingWindowMonthCount);
     });
 
 builder.Services.AddHttpClient<DigitransitStationClient>();

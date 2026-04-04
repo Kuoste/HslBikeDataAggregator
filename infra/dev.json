@@ -16,6 +16,9 @@
     },
     "snapshotHistoryLimit": {
       "value": 60
+    },
+    "historyProcessingCron": {
+      "value": "0 0 2 * * *"
     }
   }
 }

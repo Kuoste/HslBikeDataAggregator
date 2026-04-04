@@ -1,4 +1,5 @@
 using System.Globalization;
+using System.Net;
 
 using HslBikeDataAggregator.Configuration;
 using HslBikeDataAggregator.Models;
@@ -13,21 +14,24 @@ public sealed class ProcessStationHistoryService(
     HttpClient httpClient,
     IOptions<HistoryProcessingOptions> options,
     IBikeDataBlobStorage bikeDataBlobStorage,
+    TimeProvider timeProvider,
     ILogger<ProcessStationHistoryService> logger)
 {
-    private readonly string[] tripHistoryUrls = options.Value.TripHistoryUrls
-        .Where(static url => !string.IsNullOrWhiteSpace(url))
-        .Distinct(StringComparer.OrdinalIgnoreCase)
-        .ToArray();
+    private readonly string tripHistoryUrlPattern = string.IsNullOrWhiteSpace(options.Value.TripHistoryUrlPattern)
+        ? HistoryProcessingOptions.DefaultTripHistoryUrlPattern
+        : options.Value.TripHistoryUrlPattern;
+    private readonly int rollingWindowMonthCount = Math.Max(options.Value.RollingWindowMonthCount, 1);
+    private readonly int availabilityProbeMonthCount = Math.Max(options.Value.AvailabilityProbeMonthCount, Math.Max(options.Value.RollingWindowMonthCount, 1));
 
     /// <summary>
-    /// Downloads configured trip history CSV sources, aggregates per-station destinations, and stores the profiles.
+    /// Discovers the newest available HSL trip history CSV files, aggregates a rolling destination window, and stores the profiles.
     /// </summary>
     public async Task<HistoryProcessingResult> ProcessAsync(CancellationToken cancellationToken)
     {
-        if (tripHistoryUrls.Length == 0)
+        var availableMonths = await DiscoverAvailableMonthsAsync(cancellationToken);
+        if (availableMonths.Count == 0)
         {
-            logger.LogWarning("No trip history URLs are configured. Skipping destination processing.");
+            logger.LogWarning("No recent HSL trip history CSV files were available. Skipping destination processing.");
             return new HistoryProcessingResult
             {
                 SourceCount = 0,
@@ -39,9 +43,9 @@ public sealed class ProcessStationHistoryService(
         var aggregates = new Dictionary<(string DepartureStationId, string ArrivalStationId), DestinationAggregate>();
         var processedJourneyCount = 0;
 
-        foreach (var tripHistoryUrl in tripHistoryUrls)
+        foreach (var availableMonth in availableMonths)
         {
-            processedJourneyCount += await AggregateSourceAsync(tripHistoryUrl, aggregates, cancellationToken);
+            processedJourneyCount += await AggregateSourceAsync(BuildTripHistoryUrl(availableMonth), aggregates, cancellationToken);
         }
 
         var stationDestinations = new Dictionary<string, IReadOnlyList<StationHistory>>(StringComparer.Ordinal);
@@ -59,19 +63,59 @@ public sealed class ProcessStationHistoryService(
             await bikeDataBlobStorage.WriteStationDestinationsAsync(stationDestination.Key, stationDestination.Value, cancellationToken);
         }
 
+        var currentStationIds = stationDestinations.Keys.ToHashSet(StringComparer.Ordinal);
+        var existingStationIds = await bikeDataBlobStorage.ListStationDestinationIdsAsync(cancellationToken);
+        foreach (var staleStationId in existingStationIds.Except(currentStationIds, StringComparer.Ordinal).OrderBy(static stationId => stationId, StringComparer.Ordinal))
+        {
+            await bikeDataBlobStorage.DeleteStationDestinationsAsync(staleStationId, cancellationToken);
+        }
+
         logger.LogInformation(
-            "Processed {JourneyCount} historical journeys from {SourceCount} sources into {StationCount} destination profiles.",
+            "Processed {JourneyCount} historical journeys from {SourceCount} sources into {StationCount} destination profiles for months {Months}.",
             processedJourneyCount,
-            tripHistoryUrls.Length,
-            stationDestinations.Count);
+            availableMonths.Count,
+            stationDestinations.Count,
+            string.Join(", ", availableMonths.Select(static month => $"{month:yyyy-MM}")));
 
         return new HistoryProcessingResult
         {
-            SourceCount = tripHistoryUrls.Length,
+            SourceCount = availableMonths.Count,
             JourneyCount = processedJourneyCount,
             StationCount = stationDestinations.Count
         };
     }
+
+    private async Task<IReadOnlyList<DateOnly>> DiscoverAvailableMonthsAsync(CancellationToken cancellationToken)
+    {
+        var newestCandidateMonth = new DateOnly(timeProvider.GetUtcNow().Year, timeProvider.GetUtcNow().Month, 1);
+        var availableMonths = new List<DateOnly>(rollingWindowMonthCount);
+
+        for (var monthOffset = 0; monthOffset < availabilityProbeMonthCount && availableMonths.Count < rollingWindowMonthCount; monthOffset++)
+        {
+            var candidateMonth = newestCandidateMonth.AddMonths(-monthOffset);
+            if (await TripHistoryMonthExistsAsync(candidateMonth, cancellationToken))
+            {
+                availableMonths.Add(candidateMonth);
+            }
+        }
+
+        return availableMonths;
+    }
+
+    private async Task<bool> TripHistoryMonthExistsAsync(DateOnly month, CancellationToken cancellationToken)
+    {
+        using var response = await httpClient.GetAsync(BuildTripHistoryUrl(month), HttpCompletionOption.ResponseHeadersRead, cancellationToken);
+        if (response.StatusCode == HttpStatusCode.NotFound)
+        {
+            return false;
+        }
+
+        response.EnsureSuccessStatusCode();
+        return true;
+    }
+
+    private string BuildTripHistoryUrl(DateOnly month)
+        => string.Format(CultureInfo.InvariantCulture, tripHistoryUrlPattern, month.ToDateTime(TimeOnly.MinValue));
 
     private async Task<int> AggregateSourceAsync(
         string sourceUrl,

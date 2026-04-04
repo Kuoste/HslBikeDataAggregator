@@ -10,9 +10,13 @@ public interface IBikeDataBlobStorage
 
     Task<IReadOnlyList<StationHistory>> GetStationDestinationsAsync(string stationId, CancellationToken cancellationToken);
 
+    Task<IReadOnlyList<string>> ListStationDestinationIdsAsync(CancellationToken cancellationToken);
+
     Task WriteLatestStationsAsync(IReadOnlyList<BikeStation> stations, CancellationToken cancellationToken);
 
     Task WriteRecentSnapshotsAsync(IReadOnlyList<StationSnapshot> snapshots, CancellationToken cancellationToken);
 
     Task WriteStationDestinationsAsync(string stationId, IReadOnlyList<StationHistory> destinations, CancellationToken cancellationToken);
+
+    Task DeleteStationDestinationsAsync(string stationId, CancellationToken cancellationToken);
 }

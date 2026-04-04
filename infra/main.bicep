@@ -24,6 +24,9 @@ param pollIntervalCron string = '0 */5 * * * *'
 @minValue(1)
 param snapshotHistoryLimit int = 60
 
+@description('Cron expression used by the ProcessStationHistory timer trigger.')
+param historyProcessingCron string = '0 0 2 * * *'
+
 var appServicePlanName = '${functionAppName}-plan'
 var applicationInsightsName = '${functionAppName}-appi'
 var storageAccountName = take('st${toLower(replace(replace(functionAppName, '-', ''), '_', ''))}${uniqueString(resourceGroup().id)}', 24)
@@ -122,6 +125,10 @@ resource functionApp 'Microsoft.Web/sites@2023-12-01' = {
         {
           name: 'SnapshotHistoryLimit'
           value: string(snapshotHistoryLimit)
+        }
+        {
+          name: 'HistoryProcessingCron'
+          value: historyProcessingCron
         }
         {
           name: 'WEBSITE_CONTENTAZUREFILECONNECTIONSTRING'

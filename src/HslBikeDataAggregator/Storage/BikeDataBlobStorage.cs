@@ -24,6 +24,27 @@ public sealed class BikeDataBlobStorage(BlobContainerClient blobContainerClient)
         return ReadBlobAsync<StationHistory>(BikeDataBlobNames.DestinationProfile(stationId), cancellationToken);
     }
 
+    public async Task<IReadOnlyList<string>> ListStationDestinationIdsAsync(CancellationToken cancellationToken)
+    {
+        await blobContainerClient.CreateIfNotExistsAsync(cancellationToken: cancellationToken);
+
+        var stationIds = new List<string>();
+        await foreach (var blobItem in blobContainerClient.GetBlobsAsync(prefix: "destinations/", cancellationToken: cancellationToken))
+        {
+            const string prefix = "destinations/";
+            const string suffix = ".json";
+            if (!blobItem.Name.StartsWith(prefix, StringComparison.Ordinal)
+                || !blobItem.Name.EndsWith(suffix, StringComparison.Ordinal))
+            {
+                continue;
+            }
+
+            stationIds.Add(blobItem.Name[prefix.Length..^suffix.Length]);
+        }
+
+        return stationIds;
+    }
+
     private async Task<IReadOnlyList<T>> ReadBlobAsync<T>(string blobName, CancellationToken cancellationToken)
     {
         await blobContainerClient.CreateIfNotExistsAsync(cancellationToken: cancellationToken);
@@ -71,5 +92,15 @@ public sealed class BikeDataBlobStorage(BlobContainerClient blobContainerClient)
         await blobContainerClient
             .GetBlobClient(BikeDataBlobNames.DestinationProfile(stationId))
             .UploadAsync(BinaryData.FromObjectAsJson(destinations, SerializerOptions), overwrite: true, cancellationToken);
+    }
+
+    public async Task DeleteStationDestinationsAsync(string stationId, CancellationToken cancellationToken)
+    {
+        ArgumentException.ThrowIfNullOrWhiteSpace(stationId);
+
+        await blobContainerClient.CreateIfNotExistsAsync(cancellationToken: cancellationToken);
+        await blobContainerClient
+            .GetBlobClient(BikeDataBlobNames.DestinationProfile(stationId))
+            .DeleteIfExistsAsync(cancellationToken: cancellationToken);
     }
 }
