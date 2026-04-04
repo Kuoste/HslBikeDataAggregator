@@ -54,9 +54,39 @@ public sealed class AggregatedBikeDataServiceTests
     }
 
     [Fact]
-    public async Task GetSnapshotsAsync_ReturnsEmptyCollection()
+    public async Task GetSnapshotsAsync_ReturnsSnapshotsFromBlobStorage()
     {
-        var service = new AggregatedBikeDataService(Mock.Of<IBikeDataBlobStorage>());
+        var blobStorage = new Mock<IBikeDataBlobStorage>();
+        blobStorage
+            .Setup(storage => storage.GetRecentSnapshotsAsync(CancellationToken))
+            .ReturnsAsync([
+                new StationSnapshot
+                {
+                    Timestamp = new DateTimeOffset(2026, 4, 4, 9, 45, 0, TimeSpan.Zero),
+                    BikeCounts = new Dictionary<string, int>
+                    {
+                        ["station-001"] = 8
+                    }
+                }
+            ]);
+
+        var service = new AggregatedBikeDataService(blobStorage.Object);
+
+        var result = await service.GetSnapshotsAsync(CancellationToken);
+
+        var snapshot = Assert.Single(result);
+        Assert.Equal(8, snapshot.BikeCounts["station-001"]);
+    }
+
+    [Fact]
+    public async Task GetSnapshotsAsync_ReturnsEmptyCollectionWhenBlobStorageHasNoSnapshots()
+    {
+        var blobStorage = new Mock<IBikeDataBlobStorage>();
+        blobStorage
+            .Setup(storage => storage.GetRecentSnapshotsAsync(CancellationToken))
+            .ReturnsAsync([]);
+
+        var service = new AggregatedBikeDataService(blobStorage.Object);
 
         var result = await service.GetSnapshotsAsync(CancellationToken);
 

@@ -10,7 +10,7 @@ public sealed class AggregatedBikeDataService(IBikeDataBlobStorage bikeDataBlobS
         => bikeDataBlobStorage.GetLatestStationsAsync(cancellationToken);
 
     public Task<IReadOnlyList<StationSnapshot>> GetSnapshotsAsync(CancellationToken cancellationToken)
-        => Task.FromResult<IReadOnlyList<StationSnapshot>>([]);
+        => bikeDataBlobStorage.GetRecentSnapshotsAsync(cancellationToken);
 
     public Task<IReadOnlyList<HourlyAvailability>> GetAvailabilityAsync(string stationId, CancellationToken cancellationToken)
         => Task.FromResult<IReadOnlyList<HourlyAvailability>>([]);
