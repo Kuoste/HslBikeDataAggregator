@@ -16,6 +16,6 @@ public sealed record StationHistory
     [JsonPropertyName("averageDurationSeconds")]
     public required double AverageDurationSeconds { get; init; }
 
-    [JsonPropertyName("averageDistanceMeters")]
-    public required double AverageDistanceMeters { get; init; }
+    [JsonPropertyName("averageDistanceMetres")]
+    public required double AverageDistanceMetres { get; init; }
 }
