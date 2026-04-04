@@ -51,6 +51,7 @@ The read-side functions currently return empty collections until the storage-bac
 ### Configuration
 
 Local settings live in `src/HslBikeDataAggregator/local.settings.json` and are not committed.
+Copy `src/HslBikeDataAggregator/local.settings.example.json` to `local.settings.json` for local development.
 
 Expected values:
 

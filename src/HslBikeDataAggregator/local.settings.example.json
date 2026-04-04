@@ -1,0 +1,14 @@
+{
+  "IsEncrypted": false,
+  "Values": {
+    "AzureWebJobsStorage": "UseDevelopmentStorage=true",
+    "FUNCTIONS_WORKER_RUNTIME": "dotnet-isolated",
+    "DigitransitSubscriptionKey": "",
+    "PollIntervalCron": "0 */5 * * * *",
+    "SnapshotHistoryLimit": "60"
+  },
+  "Host": {
+    "CORS": "https://kuoste.github.io",
+    "CORSCredentials": false
+  }
+}

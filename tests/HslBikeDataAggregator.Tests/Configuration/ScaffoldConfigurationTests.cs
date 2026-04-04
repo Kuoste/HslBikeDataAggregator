@@ -5,10 +5,10 @@ namespace HslBikeDataAggregator.Tests.Configuration;
 public sealed class ScaffoldConfigurationTests
 {
     [Fact]
-    public async Task LocalSettings_ContainsDigitransitSubscriptionKeyPlaceholder()
+    public async Task LocalSettingsTemplate_ContainsDigitransitSubscriptionKeyPlaceholder()
     {
         var cancellationToken = TestContext.Current.CancellationToken;
-        var json = await File.ReadAllTextAsync(GetRepositoryFilePath("src", "HslBikeDataAggregator", "local.settings.json"), cancellationToken);
+        var json = await File.ReadAllTextAsync(GetRepositoryFilePath("src", "HslBikeDataAggregator", "local.settings.example.json"), cancellationToken);
         using var document = JsonDocument.Parse(json);
 
         var key = document.RootElement
@@ -20,10 +20,10 @@ public sealed class ScaffoldConfigurationTests
     }
 
     [Fact]
-    public async Task LocalSettings_ContainsGitHubPagesCorsOrigin()
+    public async Task LocalSettingsTemplate_ContainsGitHubPagesCorsOrigin()
     {
         var cancellationToken = TestContext.Current.CancellationToken;
-        var json = await File.ReadAllTextAsync(GetRepositoryFilePath("src", "HslBikeDataAggregator", "local.settings.json"), cancellationToken);
+        var json = await File.ReadAllTextAsync(GetRepositoryFilePath("src", "HslBikeDataAggregator", "local.settings.example.json"), cancellationToken);
         using var document = JsonDocument.Parse(json);
 
         var corsOrigin = document.RootElement
