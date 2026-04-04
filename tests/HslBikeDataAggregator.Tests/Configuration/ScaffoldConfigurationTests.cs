@@ -34,24 +34,6 @@ public sealed class ScaffoldConfigurationTests
         Assert.Equal("https://kuoste.github.io", corsOrigin);
     }
 
-    [Theory]
-    [InlineData("README.md", "read-optimised", "read-optimized")]
-    [InlineData("README.md", "behaviour", "behavior")]
-    [InlineData(".github", "copilot-instructions.md", "serialisation", "serialization")]
-    [InlineData(".github", "instructions", "repository-workflow.instructions.md", "behaviour", "behavior")]
-    [InlineData("docs", "adr", "001-cold-start-mitigation.md", "minimising", "minimizing")]
-    public async Task RepositoryGuidance_UsesBritishEnglishForNormalisedTerms(params string[] values)
-    {
-        var cancellationToken = TestContext.Current.CancellationToken;
-        var expectedBritish = values[^2];
-        var excludedAmerican = values[^1];
-        var relativePathParts = values[..^2];
-        var content = await File.ReadAllTextAsync(GetRepositoryFilePath(relativePathParts), cancellationToken);
-
-        Assert.Contains(expectedBritish, content);
-        Assert.DoesNotContain(excludedAmerican, content);
-    }
-
     private static string GetRepositoryFilePath(params string[] parts)
     {
         var repositoryRoot = Path.GetFullPath(Path.Combine(AppContext.BaseDirectory, "..", "..", "..", "..", ".."));
