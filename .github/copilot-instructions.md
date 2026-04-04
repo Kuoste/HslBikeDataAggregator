@@ -57,3 +57,12 @@ All endpoints return JSON. CORS enabled for `https://kuoste.github.io`.
 - File-scoped namespaces, nullable enabled, implicit usings.
 - Return empty collections on failure, never null.
 - Use `ReadFromJsonAsync<T>()` / `System.Text.Json` for serialization.
+
+## Delivery Workflow
+
+- Keep implementation work tied to an open GitHub issue.
+- Use an issue branch named `issue-<number>-<short-description>` for delivery.
+- If an issue was closed before its code was pushed, reopen the issue before continuing work.
+- Add or update automated tests for each delivered behavior or repository-level configuration change.
+- Run `dotnet build HslBikeDataAggregator.slnx` and the relevant tests before considering the issue complete.
+- Do not treat an issue as done until the code is committed on the issue branch and ready to merge.

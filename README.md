@@ -70,6 +70,15 @@ From `src/HslBikeDataAggregator`:
 
 `func start`
 
+## Issue delivery workflow
+
+- Keep code changes linked to an open GitHub issue.
+- Use an issue branch named `issue-<number>-<short-description>`.
+- If an issue was closed before the code was pushed, reopen the issue before continuing.
+- Add or update automated tests for delivered behavior or repository configuration changes.
+- Run `dotnet build HslBikeDataAggregator.slnx` and the relevant tests before treating the issue as complete.
+- Do not consider an issue done until the code is committed on the issue branch and ready to merge.
+
 ## Next milestone
 
 The next implementation step is issue `#2`: connect `PollStations` to the HSL Digitransit API, persist the latest station list and rolling snapshots to Blob Storage, and then wire the HTTP functions to real stored data.

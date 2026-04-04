@@ -2,4 +2,7 @@
   <Folder Name="/src/">
     <Project Path="src/HslBikeDataAggregator/HslBikeDataAggregator.csproj" />
   </Folder>
+  <Folder Name="/tests/">
+    <Project Path="tests/HslBikeDataAggregator.Tests/HslBikeDataAggregator.Tests.csproj" />
+  </Folder>
 </Solution>
