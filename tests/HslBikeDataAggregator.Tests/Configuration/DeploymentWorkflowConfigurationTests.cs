@@ -32,6 +32,7 @@ public sealed class DeploymentWorkflowConfigurationTests
         var yaml = await File.ReadAllTextAsync(GetRepositoryFilePath(".github", "workflows", "deploy-dev.yml"), cancellationToken);
 
         Assert.Contains("environment: dev", yaml, StringComparison.Ordinal);
+        Assert.Contains("@infra/dev.json", yaml, StringComparison.Ordinal);
     }
 
     [Fact]
@@ -41,6 +42,7 @@ public sealed class DeploymentWorkflowConfigurationTests
         var yaml = await File.ReadAllTextAsync(GetRepositoryFilePath(".github", "workflows", "deploy-prod.yml"), cancellationToken);
 
         Assert.Contains("environment: prod", yaml, StringComparison.Ordinal);
+        Assert.Contains("@infra/prod.json", yaml, StringComparison.Ordinal);
     }
 
     [Fact]
