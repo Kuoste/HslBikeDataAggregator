@@ -10,6 +10,7 @@ namespace HslBikeDataAggregator.Services;
 public sealed class PollStationsService(
     DigitransitStationClient digitransitStationClient,
     IBikeDataBlobStorage bikeDataBlobStorage,
+    AvailabilityProfileService availabilityProfileService,
     IOptions<PollStationsOptions> options,
     TimeProvider timeProvider,
     ILogger<PollStationsService> logger) : IPollStationsService
@@ -31,14 +32,20 @@ public sealed class PollStationsService(
             .OrderBy(snapshot => snapshot.Timestamp)
             .TakeLast(snapshotHistoryLimit)
             .ToArray();
+        var availabilityProfiles = availabilityProfileService.BuildProfiles(updatedSnapshots);
 
         await bikeDataBlobStorage.WriteLatestStationsAsync(stations, cancellationToken);
         await bikeDataBlobStorage.WriteRecentSnapshotsAsync(updatedSnapshots, cancellationToken);
+        foreach (var availabilityProfile in availabilityProfiles)
+        {
+            await bikeDataBlobStorage.WriteAvailabilityProfileAsync(availabilityProfile.Key, availabilityProfile.Value, cancellationToken);
+        }
 
         logger.LogInformation(
-            "Stored {StationCount} stations and {SnapshotCount} snapshots at {Timestamp}.",
+            "Stored {StationCount} stations, {SnapshotCount} snapshots, and {AvailabilityProfileCount} hourly availability profiles at {Timestamp}.",
             stations.Count,
             updatedSnapshots.Length,
+            availabilityProfiles.Count,
             timestamp);
 
         return new PollStationsResult(timestamp, stations.Count, updatedSnapshots.Length);

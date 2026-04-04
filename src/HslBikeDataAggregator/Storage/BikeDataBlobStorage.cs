@@ -17,6 +17,13 @@ public sealed class BikeDataBlobStorage(BlobContainerClient blobContainerClient)
     public async Task<IReadOnlyList<StationSnapshot>> GetRecentSnapshotsAsync(CancellationToken cancellationToken)
         => await ReadBlobAsync<StationSnapshot>(BikeDataBlobNames.RecentSnapshots, cancellationToken);
 
+    public Task<IReadOnlyList<HourlyAvailability>> GetAvailabilityProfileAsync(string stationId, CancellationToken cancellationToken)
+    {
+        ArgumentException.ThrowIfNullOrWhiteSpace(stationId);
+
+        return ReadBlobAsync<HourlyAvailability>(BikeDataBlobNames.AvailabilityProfile(stationId), cancellationToken);
+    }
+
     public Task<IReadOnlyList<StationHistory>> GetStationDestinationsAsync(string stationId, CancellationToken cancellationToken)
     {
         ArgumentException.ThrowIfNullOrWhiteSpace(stationId);
@@ -81,6 +88,17 @@ public sealed class BikeDataBlobStorage(BlobContainerClient blobContainerClient)
         await blobContainerClient
             .GetBlobClient(BikeDataBlobNames.RecentSnapshots)
             .UploadAsync(BinaryData.FromObjectAsJson(snapshots, SerializerOptions), overwrite: true, cancellationToken);
+    }
+
+    public async Task WriteAvailabilityProfileAsync(string stationId, IReadOnlyList<HourlyAvailability> availabilityProfile, CancellationToken cancellationToken)
+    {
+        ArgumentException.ThrowIfNullOrWhiteSpace(stationId);
+        ArgumentNullException.ThrowIfNull(availabilityProfile);
+
+        await blobContainerClient.CreateIfNotExistsAsync(cancellationToken: cancellationToken);
+        await blobContainerClient
+            .GetBlobClient(BikeDataBlobNames.AvailabilityProfile(stationId))
+            .UploadAsync(BinaryData.FromObjectAsJson(availabilityProfile, SerializerOptions), overwrite: true, cancellationToken);
     }
 
     public async Task WriteStationDestinationsAsync(string stationId, IReadOnlyList<StationHistory> destinations, CancellationToken cancellationToken)

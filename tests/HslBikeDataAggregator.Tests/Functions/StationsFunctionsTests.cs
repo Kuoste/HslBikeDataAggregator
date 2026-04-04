@@ -138,6 +138,65 @@ public sealed class StationsFunctionsTests
     }
 
     [Fact]
+    public async Task GetStationAvailability_ReturnsOkResponseWithStoredAvailabilityProfile()
+    {
+        var cancellationToken = TestContext.Current.CancellationToken;
+        var services = new ServiceCollection();
+        services
+            .AddOptions<WorkerOptions>()
+            .Configure(options => options.Serializer = new JsonObjectSerializer());
+
+        var serviceProvider = services.BuildServiceProvider();
+
+        var functionContext = new Mock<FunctionContext>();
+        functionContext.SetupProperty(context => context.InstanceServices, serviceProvider);
+
+        var responseHeaders = new HttpHeadersCollection();
+        var responseBody = new MemoryStream();
+        var response = new Mock<HttpResponseData>(functionContext.Object);
+        response.SetupProperty(httpResponse => httpResponse.StatusCode);
+        response.SetupProperty(httpResponse => httpResponse.Body, responseBody);
+        response.SetupGet(httpResponse => httpResponse.Headers).Returns(responseHeaders);
+        response.SetupGet(httpResponse => httpResponse.Cookies).Returns(Mock.Of<HttpCookies>());
+
+        var request = new Mock<HttpRequestData>(functionContext.Object);
+        request.Setup(httpRequest => httpRequest.CreateResponse()).Returns(response.Object);
+        request.SetupGet(httpRequest => httpRequest.Body).Returns(Stream.Null);
+        request.SetupGet(httpRequest => httpRequest.Headers).Returns(new HttpHeadersCollection());
+        request.SetupGet(httpRequest => httpRequest.Identities).Returns(Array.Empty<ClaimsIdentity>());
+        request.SetupGet(httpRequest => httpRequest.Method).Returns("GET");
+        request.SetupGet(httpRequest => httpRequest.Url).Returns(new Uri("https://localhost/api/stations/station-001/availability"));
+
+        var blobStorage = new Mock<IBikeDataBlobStorage>();
+        blobStorage
+            .Setup(storage => storage.GetAvailabilityProfileAsync("station-001", cancellationToken))
+            .ReturnsAsync([
+                new HourlyAvailability
+                {
+                    Hour = 10,
+                    AverageBikesAvailable = 7.5
+                },
+                new HourlyAvailability
+                {
+                    Hour = 11,
+                    AverageBikesAvailable = 5.25
+                }
+            ]);
+
+        var function = new StationsFunctions(new AggregatedBikeDataService(blobStorage.Object), NullLogger<StationsFunctions>.Instance);
+
+        var responseData = await function.GetStationAvailability(request.Object, "station-001", cancellationToken);
+
+        Assert.Equal(HttpStatusCode.OK, responseData.StatusCode);
+        Assert.True(responseData.Headers.TryGetValues("Access-Control-Allow-Origin", out var origins));
+        Assert.Contains("https://kuoste.github.io", origins);
+
+        responseData.Body.Position = 0;
+        using var reader = new StreamReader(responseData.Body);
+        Assert.Equal("[{\"hour\":10,\"averageBikesAvailable\":7.5},{\"hour\":11,\"averageBikesAvailable\":5.25}]", await reader.ReadToEndAsync(cancellationToken));
+    }
+
+    [Fact]
     public async Task GetStationDestinations_ReturnsOkResponseWithStoredDestinations()
     {
         var cancellationToken = TestContext.Current.CancellationToken;

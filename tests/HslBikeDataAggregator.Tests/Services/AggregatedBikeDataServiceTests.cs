@@ -94,13 +94,26 @@ public sealed class AggregatedBikeDataServiceTests
     }
 
     [Fact]
-    public async Task GetAvailabilityAsync_ReturnsEmptyCollection()
+    public async Task GetAvailabilityAsync_ReturnsAvailabilityProfileFromBlobStorage()
     {
-        var service = new AggregatedBikeDataService(Mock.Of<IBikeDataBlobStorage>());
+        var blobStorage = new Mock<IBikeDataBlobStorage>();
+        blobStorage
+            .Setup(storage => storage.GetAvailabilityProfileAsync("station-001", CancellationToken))
+            .ReturnsAsync([
+                new HourlyAvailability
+                {
+                    Hour = 10,
+                    AverageBikesAvailable = 7.5
+                }
+            ]);
+
+        var service = new AggregatedBikeDataService(blobStorage.Object);
 
         var result = await service.GetAvailabilityAsync("station-001", CancellationToken);
 
-        Assert.Empty(result);
+        var availability = Assert.Single(result);
+        Assert.Equal(10, availability.Hour);
+        Assert.Equal(7.5, availability.AverageBikesAvailable);
     }
 
     [Fact]

@@ -95,10 +95,18 @@ public sealed class PollStationsServiceTests
             .Callback<IReadOnlyList<StationSnapshot>, CancellationToken>((snapshots, _) => writtenSnapshots = snapshots)
             .Returns(Task.CompletedTask);
 
+        var writtenAvailabilityProfiles = new Dictionary<string, IReadOnlyList<HourlyAvailability>>(StringComparer.Ordinal);
+        blobStorage
+            .Setup(storage => storage.WriteAvailabilityProfileAsync(It.IsAny<string>(), It.IsAny<IReadOnlyList<HourlyAvailability>>(), It.IsAny<CancellationToken>()))
+            .Callback<string, IReadOnlyList<HourlyAvailability>, CancellationToken>((stationId, availabilityProfile, _) => writtenAvailabilityProfiles[stationId] = availabilityProfile)
+            .Returns(Task.CompletedTask);
+
         var timestamp = new DateTimeOffset(2026, 4, 3, 10, 10, 0, TimeSpan.Zero);
+        var availabilityProfileService = new AvailabilityProfileService();
         var service = new PollStationsService(
             digitransitStationClient,
             blobStorage.Object,
+            availabilityProfileService,
             options,
             new FixedTimeProvider(timestamp),
             NullLogger<PollStationsService>.Instance);
@@ -123,6 +131,11 @@ public sealed class PollStationsServiceTests
         Assert.Equal(new DateTimeOffset(2026, 4, 3, 10, 5, 0, TimeSpan.Zero), writtenSnapshots[0].Timestamp);
         Assert.Equal(timestamp, writtenSnapshots[1].Timestamp);
         Assert.Equal(9, writtenSnapshots[1].BikeCounts["001"]);
+
+        var station001Profile = Assert.IsAssignableFrom<IReadOnlyList<HourlyAvailability>>(writtenAvailabilityProfiles["001"]);
+        var station001Availability = Assert.Single(station001Profile);
+        Assert.Equal(10, station001Availability.Hour);
+        Assert.Equal(9, station001Availability.AverageBikesAvailable);
 
         Assert.Equal(timestamp, result.Timestamp);
         Assert.Equal(1, result.StationCount);
