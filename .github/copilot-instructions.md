@@ -66,6 +66,7 @@ All endpoints return JSON. CORS enabled for `https://kuoste.github.io`.
 - Add or update automated tests for each delivered behaviour or repository-level configuration change.
 - Run `dotnet build HslBikeDataAggregator.slnx` and the relevant tests before considering the issue complete.
 - Do not treat an issue as done until the branch is pushed, the pull request is open, and CI is passing.
+- Explicitly link pull requests to their GitHub issue using closing keywords such as `Closes #<issue>` to ensure the issue is automatically closed when the PR is merged.
 
 ## Language Preferences
 
