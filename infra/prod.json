@@ -1,0 +1,21 @@
+{
+  "$schema": "https://schema.management.azure.com/schemas/2019-04-01/deploymentParameters.json#",
+  "contentVersion": "1.0.0.0",
+  "parameters": {
+    "environmentName": {
+      "value": "prod"
+    },
+    "functionAppName": {
+      "value": "func-hsl-bike-data-aggregator-prod"
+    },
+    "corsAllowedOrigin": {
+      "value": "https://kuoste.github.io"
+    },
+    "pollIntervalCron": {
+      "value": "0 */5 * * * *"
+    },
+    "snapshotHistoryLimit": {
+      "value": 60
+    }
+  }
+}

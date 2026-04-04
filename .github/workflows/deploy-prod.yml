@@ -1,0 +1,92 @@
+name: Deploy prod
+
+on:
+  workflow_dispatch:
+    inputs:
+      git-ref:
+        description: Git ref to deploy to production
+        required: true
+        default: main
+        type: string
+
+permissions:
+  contents: read
+  id-token: write
+
+concurrency:
+  group: deploy-prod
+  cancel-in-progress: false
+
+jobs:
+  deploy:
+    name: Deploy production environment
+    runs-on: ubuntu-latest
+    environment: prod
+    env:
+      AZURE_LOCATION: ${{ vars.AZURE_LOCATION }}
+      AZURE_RESOURCE_GROUP: ${{ vars.AZURE_RESOURCE_GROUP || 'rg-hsl-bike-data-aggregator-prod' }}
+      AZURE_FUNCTION_APP_NAME: ${{ vars.AZURE_FUNCTION_APP_NAME || 'func-hsl-bike-data-aggregator-prod' }}
+
+    steps:
+      - name: Check out repository
+        uses: actions/checkout@v4
+        with:
+          ref: ${{ inputs.git-ref }}
+
+      - name: Set up .NET SDK
+        uses: actions/setup-dotnet@v4
+        with:
+          dotnet-version: 10.0.x
+
+      - name: Restore solution
+        run: dotnet restore HslBikeDataAggregator.slnx
+
+      - name: Build solution
+        run: dotnet build HslBikeDataAggregator.slnx --configuration Release --no-restore
+
+      - name: Run tests
+        run: dotnet test tests/HslBikeDataAggregator.Tests/HslBikeDataAggregator.Tests.csproj --configuration Release --no-build
+
+      - name: Publish Function App
+        run: dotnet publish src/HslBikeDataAggregator/HslBikeDataAggregator.csproj --configuration Release --output ./artifacts/publish
+
+      - name: Sign in to Azure
+        uses: azure/login@v2
+        with:
+          client-id: ${{ secrets.AZURE_CLIENT_ID }}
+          tenant-id: ${{ secrets.AZURE_TENANT_ID }}
+          subscription-id: ${{ secrets.AZURE_SUBSCRIPTION_ID }}
+
+      - name: Create resource group if needed
+        uses: azure/cli@v2
+        with:
+          inlineScript: |
+            az group create \
+              --name "$AZURE_RESOURCE_GROUP" \
+              --location "$AZURE_LOCATION"
+
+      - name: Deploy infrastructure
+        uses: azure/cli@v2
+        with:
+          inlineScript: |
+            az deployment group create \
+              --resource-group "$AZURE_RESOURCE_GROUP" \
+              --template-file infra/main.bicep \
+              --parameters @infra/prod.bicepparam \
+              functionAppName="$AZURE_FUNCTION_APP_NAME" \
+              location="$AZURE_LOCATION"
+
+      - name: Configure Digitransit subscription key
+        uses: azure/cli@v2
+        with:
+          inlineScript: |
+            az functionapp config appsettings set \
+              --resource-group "$AZURE_RESOURCE_GROUP" \
+              --name "$AZURE_FUNCTION_APP_NAME" \
+              --settings DigitransitSubscriptionKey="${{ secrets.DIGITRANSIT_SUBSCRIPTION_KEY }}"
+
+      - name: Deploy Function App package
+        uses: Azure/functions-action@v1
+        with:
+          app-name: ${{ vars.AZURE_FUNCTION_APP_NAME }}
+          package: ./artifacts/publish

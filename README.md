@@ -71,6 +71,73 @@ From `src/HslBikeDataAggregator`:
 
 `func start`
 
+## Azure deployment
+
+Deployment is split into `dev` and `prod` environments.
+
+- Pull requests run `CI` only.
+- Pushes to `main` deploy automatically to the `dev` Azure environment.
+- Production deploys run manually through the `Deploy prod` workflow and should be protected with a GitHub environment approval.
+
+### Infrastructure
+
+Azure infrastructure is defined in `infra/main.bicep` with environment parameter files:
+
+- `infra/dev.bicepparam`
+- `infra/prod.bicepparam`
+
+The template provisions:
+
+- Azure Functions hosting plan on the Consumption tier
+- Azure Function App
+- Storage account
+- Application Insights
+
+### GitHub environments
+
+Create two GitHub environments:
+
+- `dev`
+- `prod`
+
+Recommended names for this repository:
+
+- `dev`
+  - `AZURE_RESOURCE_GROUP=rg-hsl-bike-data-aggregator-dev`
+  - `AZURE_FUNCTION_APP_NAME=func-hsl-bike-data-aggregator-dev`
+- `prod`
+  - `AZURE_RESOURCE_GROUP=rg-hsl-bike-data-aggregator-prod`
+  - `AZURE_FUNCTION_APP_NAME=func-hsl-bike-data-aggregator-prod`
+
+Set these environment variables in each environment:
+
+- `AZURE_LOCATION`
+- `AZURE_RESOURCE_GROUP`
+- `AZURE_FUNCTION_APP_NAME`
+
+Set these environment secrets in each environment:
+
+- `AZURE_CLIENT_ID`
+- `AZURE_TENANT_ID`
+- `AZURE_SUBSCRIPTION_ID`
+- `DIGITRANSIT_SUBSCRIPTION_KEY`
+
+### Azure authentication
+
+GitHub Actions uses Azure OpenID Connect federation via `azure/login`. This avoids publish profiles and long-lived client secrets.
+
+One-time Azure setup:
+
+1. Create an Entra application or service principal for GitHub Actions.
+2. Add a federated credential for this repository and the target GitHub environment.
+3. Grant the identity `Contributor` access to the target resource group.
+
+### Workflows
+
+- `.github/workflows/ci.yml` - build, test, and validate Bicep
+- `.github/workflows/deploy-dev.yml` - deploy infrastructure and app code to `dev`
+- `.github/workflows/deploy-prod.yml` - manually deploy infrastructure and app code to `prod`
+
 ## Issue delivery workflow
 
 - Keep code changes linked to an open GitHub issue.

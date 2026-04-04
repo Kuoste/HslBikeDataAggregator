@@ -2,30 +2,52 @@ name: CI
 
 on:
   push:
-    branches: [main]
+    branches:
+      - main
   pull_request:
-    branches: [main]
+    branches:
+      - main
+  workflow_dispatch:
 
 permissions:
   contents: read
 
 jobs:
   build-and-test:
+    name: Build and test
     runs-on: ubuntu-latest
 
     steps:
-      - uses: actions/checkout@v4
+      - name: Check out repository
+        uses: actions/checkout@v4
 
-      - name: Setup .NET
+      - name: Set up .NET SDK
         uses: actions/setup-dotnet@v4
         with:
-          dotnet-version: '10.0.x'
+          dotnet-version: 10.0.x
 
-      - name: Restore dependencies
-        run: dotnet restore
+      - name: Restore solution
+        run: dotnet restore HslBikeDataAggregator.slnx
 
-      - name: Build
-        run: dotnet build --no-restore --configuration Release
+      - name: Build solution
+        run: dotnet build HslBikeDataAggregator.slnx --configuration Release --no-restore
 
-      - name: Test
-        run: dotnet test --no-build --configuration Release --verbosity normal
+      - name: Run tests
+        run: dotnet test tests/HslBikeDataAggregator.Tests/HslBikeDataAggregator.Tests.csproj --configuration Release --no-build
+
+  validate-infrastructure:
+    name: Validate infrastructure
+    runs-on: ubuntu-latest
+
+    steps:
+      - name: Check out repository
+        uses: actions/checkout@v4
+
+      - name: Validate Bicep template and parameter files
+        uses: azure/cli@v2
+        with:
+          inlineScript: |
+            az bicep version
+            az bicep build --file infra/main.bicep
+            az bicep build-params --file infra/dev.bicepparam
+            az bicep build-params --file infra/prod.bicepparam
