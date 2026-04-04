@@ -16,5 +16,9 @@ public sealed class AggregatedBikeDataService(IBikeDataBlobStorage bikeDataBlobS
         => Task.FromResult<IReadOnlyList<HourlyAvailability>>([]);
 
     public Task<IReadOnlyList<StationHistory>> GetDestinationsAsync(string stationId, CancellationToken cancellationToken)
-        => Task.FromResult<IReadOnlyList<StationHistory>>([]);
+    {
+        ArgumentException.ThrowIfNullOrWhiteSpace(stationId);
+
+        return bikeDataBlobStorage.GetStationDestinationsAsync(stationId, cancellationToken);
+    }
 }

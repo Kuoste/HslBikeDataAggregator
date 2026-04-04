@@ -104,12 +104,27 @@ public sealed class AggregatedBikeDataServiceTests
     }
 
     [Fact]
-    public async Task GetDestinationsAsync_ReturnsEmptyCollection()
+    public async Task GetDestinationsAsync_ReturnsDestinationsFromBlobStorage()
     {
-        var service = new AggregatedBikeDataService(Mock.Of<IBikeDataBlobStorage>());
+        var blobStorage = new Mock<IBikeDataBlobStorage>();
+        blobStorage
+            .Setup(storage => storage.GetStationDestinationsAsync("station-001", CancellationToken))
+            .ReturnsAsync([
+                new StationHistory
+                {
+                    DepartureStationId = "station-001",
+                    ArrivalStationId = "station-002",
+                    TripCount = 12,
+                    AverageDurationSeconds = 425.5,
+                    AverageDistanceMetres = 1_280.2
+                }
+            ]);
+
+        var service = new AggregatedBikeDataService(blobStorage.Object);
 
         var result = await service.GetDestinationsAsync("station-001", CancellationToken);
 
-        Assert.Empty(result);
+        var destination = Assert.Single(result);
+        Assert.Equal("station-002", destination.ArrivalStationId);
     }
 }

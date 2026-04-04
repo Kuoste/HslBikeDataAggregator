@@ -136,4 +136,61 @@ public sealed class StationsFunctionsTests
         using var reader = new StreamReader(responseData.Body);
         Assert.Equal("[{\"timestamp\":\"2026-04-04T09:45:00+00:00\",\"bikeCounts\":{\"station-001\":8,\"station-002\":3}}]", await reader.ReadToEndAsync(cancellationToken));
     }
+
+    [Fact]
+    public async Task GetStationDestinations_ReturnsOkResponseWithStoredDestinations()
+    {
+        var cancellationToken = TestContext.Current.CancellationToken;
+        var services = new ServiceCollection();
+        services
+            .AddOptions<WorkerOptions>()
+            .Configure(options => options.Serializer = new JsonObjectSerializer());
+
+        var serviceProvider = services.BuildServiceProvider();
+
+        var functionContext = new Mock<FunctionContext>();
+        functionContext.SetupProperty(context => context.InstanceServices, serviceProvider);
+
+        var responseHeaders = new HttpHeadersCollection();
+        var responseBody = new MemoryStream();
+        var response = new Mock<HttpResponseData>(functionContext.Object);
+        response.SetupProperty(httpResponse => httpResponse.StatusCode);
+        response.SetupProperty(httpResponse => httpResponse.Body, responseBody);
+        response.SetupGet(httpResponse => httpResponse.Headers).Returns(responseHeaders);
+        response.SetupGet(httpResponse => httpResponse.Cookies).Returns(Mock.Of<HttpCookies>());
+
+        var request = new Mock<HttpRequestData>(functionContext.Object);
+        request.Setup(httpRequest => httpRequest.CreateResponse()).Returns(response.Object);
+        request.SetupGet(httpRequest => httpRequest.Body).Returns(Stream.Null);
+        request.SetupGet(httpRequest => httpRequest.Headers).Returns(new HttpHeadersCollection());
+        request.SetupGet(httpRequest => httpRequest.Identities).Returns(Array.Empty<ClaimsIdentity>());
+        request.SetupGet(httpRequest => httpRequest.Method).Returns("GET");
+        request.SetupGet(httpRequest => httpRequest.Url).Returns(new Uri("https://localhost/api/stations/station-001/destinations"));
+
+        var blobStorage = new Mock<IBikeDataBlobStorage>();
+        blobStorage
+            .Setup(storage => storage.GetStationDestinationsAsync("station-001", cancellationToken))
+            .ReturnsAsync([
+                new StationHistory
+                {
+                    DepartureStationId = "station-001",
+                    ArrivalStationId = "station-002",
+                    TripCount = 12,
+                    AverageDurationSeconds = 425.5,
+                    AverageDistanceMetres = 1_280.2
+                }
+            ]);
+
+        var function = new StationsFunctions(new AggregatedBikeDataService(blobStorage.Object), NullLogger<StationsFunctions>.Instance);
+
+        var responseData = await function.GetStationDestinations(request.Object, "station-001", cancellationToken);
+
+        Assert.Equal(HttpStatusCode.OK, responseData.StatusCode);
+        Assert.True(responseData.Headers.TryGetValues("Access-Control-Allow-Origin", out var origins));
+        Assert.Contains("https://kuoste.github.io", origins);
+
+        responseData.Body.Position = 0;
+        using var reader = new StreamReader(responseData.Body);
+        Assert.Equal("[{\"departureStationId\":\"station-001\",\"arrivalStationId\":\"station-002\",\"tripCount\":12,\"averageDurationSeconds\":425.5,\"averageDistanceMetres\":1280.2}]", await reader.ReadToEndAsync(cancellationToken));
+    }
 }

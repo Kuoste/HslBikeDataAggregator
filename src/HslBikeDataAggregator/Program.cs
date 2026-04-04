@@ -21,7 +21,15 @@ builder.Services
         options.SnapshotHistoryLimit = configuration.GetValue<int?>("SnapshotHistoryLimit") ?? 60;
     });
 
+builder.Services
+    .AddOptions<HistoryProcessingOptions>()
+    .Configure<IConfiguration>((options, configuration) =>
+    {
+        options.TripHistoryUrls = configuration.GetSection("HistoryProcessing:TripHistoryUrls").Get<string[]>() ?? [];
+    });
+
 builder.Services.AddHttpClient<DigitransitStationClient>();
+builder.Services.AddHttpClient<ProcessStationHistoryService>();
 builder.Services.AddSingleton(TimeProvider.System);
 builder.Services.AddSingleton(provider =>
 {
