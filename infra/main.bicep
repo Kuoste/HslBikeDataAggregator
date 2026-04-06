@@ -129,6 +129,7 @@ resource functionApp 'Microsoft.Web/sites@2024-04-01' = {
         version: '10.0'
       }
       scaleAndConcurrency: {
+        maximumInstanceCount: 100
         instanceMemoryMB: 512
       }
     }

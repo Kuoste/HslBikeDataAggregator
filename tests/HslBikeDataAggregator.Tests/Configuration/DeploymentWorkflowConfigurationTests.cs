@@ -129,6 +129,7 @@ public sealed class DeploymentWorkflowConfigurationTests
         Assert.Contains("name: 'FC1'", mainBicep, StringComparison.Ordinal);
         Assert.Contains("kind: 'functionapp,linux'", mainBicep, StringComparison.Ordinal);
         Assert.Contains("functionAppConfig:", mainBicep, StringComparison.Ordinal);
+        Assert.Contains("maximumInstanceCount:", mainBicep, StringComparison.Ordinal);
         Assert.Contains("deploymentStorageContainerName = 'deployment-packages'", mainBicep, StringComparison.Ordinal);
         Assert.DoesNotContain("WEBSITE_CONTENTSHARE", mainBicep, StringComparison.Ordinal);
     }
