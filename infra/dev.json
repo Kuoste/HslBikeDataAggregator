@@ -8,8 +8,11 @@
     "functionAppName": {
       "value": "func-hsl-bike-data-aggregator-dev-flex"
     },
-    "corsAllowedOrigin": {
-      "value": "https://kuoste.github.io"
+    "corsAllowedOrigins": {
+      "value": [
+        "https://kuoste.github.io",
+        "http://localhost:5000"
+      ]
     },
     "pollIntervalCron": {
       "value": "0 */15 * * * *"

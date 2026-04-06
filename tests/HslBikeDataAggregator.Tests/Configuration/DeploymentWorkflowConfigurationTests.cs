@@ -137,6 +137,30 @@ public sealed class DeploymentWorkflowConfigurationTests
     }
 
     [Fact]
+    public async Task Infrastructure_ConfiguresCorsAsArrayWithPlatformOnly()
+    {
+        var cancellationToken = TestContext.Current.CancellationToken;
+        var mainBicep = await File.ReadAllTextAsync(GetRepositoryFilePath("infra", "main.bicep"), cancellationToken);
+        var devJson = await File.ReadAllTextAsync(GetRepositoryFilePath("infra", "dev.json"), cancellationToken);
+        var prodJson = await File.ReadAllTextAsync(GetRepositoryFilePath("infra", "prod.json"), cancellationToken);
+        var devBicepParameters = await File.ReadAllTextAsync(GetRepositoryFilePath("infra", "dev.bicepparam"), cancellationToken);
+        var prodBicepParameters = await File.ReadAllTextAsync(GetRepositoryFilePath("infra", "prod.bicepparam"), cancellationToken);
+
+        Assert.Contains("param corsAllowedOrigins array", mainBicep, StringComparison.Ordinal);
+        Assert.Contains("allowedOrigins: corsAllowedOrigins", mainBicep, StringComparison.Ordinal);
+
+        Assert.Contains("\"corsAllowedOrigins\"", devJson, StringComparison.Ordinal);
+        Assert.Contains("http://localhost:5000", devJson, StringComparison.Ordinal);
+        Assert.Contains("\"corsAllowedOrigins\"", prodJson, StringComparison.Ordinal);
+        Assert.DoesNotContain("localhost", prodJson, StringComparison.Ordinal);
+
+        Assert.Contains("param corsAllowedOrigins", devBicepParameters, StringComparison.Ordinal);
+        Assert.Contains("http://localhost:5000", devBicepParameters, StringComparison.Ordinal);
+        Assert.Contains("param corsAllowedOrigins", prodBicepParameters, StringComparison.Ordinal);
+        Assert.DoesNotContain("localhost", prodBicepParameters, StringComparison.Ordinal);
+    }
+
+    [Fact]
     public async Task DeployWorkflows_PublishFlexConsumptionPackages()
     {
         var cancellationToken = TestContext.Current.CancellationToken;

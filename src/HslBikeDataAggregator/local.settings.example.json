@@ -8,7 +8,7 @@
     "SnapshotHistoryLimit": "60"
   },
   "Host": {
-    "CORS": "https://kuoste.github.io",
+    "CORS": "https://kuoste.github.io,http://localhost:5000",
     "CORSCredentials": false
   }
 }

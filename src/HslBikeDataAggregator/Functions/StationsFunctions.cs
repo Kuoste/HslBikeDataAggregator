@@ -13,7 +13,6 @@ public sealed class StationsFunctions(
     AggregatedBikeDataService bikeDataService,
     ILogger<StationsFunctions> logger)
 {
-    private const string AllowedOrigin = "https://kuoste.github.io";
     private const string LiveStationsCacheControl = "public, max-age=120";
     private const string SnapshotsCacheControl = "public, max-age=900";
     private const string StationStatisticsCacheControl = "public, max-age=3600";
@@ -52,9 +51,7 @@ public sealed class StationsFunctions(
     {
         var payload = await payloadTask;
         var response = request.CreateResponse(HttpStatusCode.OK);
-        response.Headers.Add("Access-Control-Allow-Origin", AllowedOrigin);
         response.Headers.Add("Cache-Control", cacheControl);
-        response.Headers.Add("Vary", "Origin");
         await response.WriteAsJsonAsync(payload, cancellationToken);
         logger.LogInformation("Served {PayloadType} response with {Count} items.", typeof(T).Name, payload.Count);
         return response;

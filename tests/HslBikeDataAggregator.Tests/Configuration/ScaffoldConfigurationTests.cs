@@ -20,7 +20,7 @@ public sealed class ScaffoldConfigurationTests
     }
 
     [Fact]
-    public async Task LocalSettingsTemplate_ContainsGitHubPagesCorsOrigin()
+    public async Task LocalSettingsTemplate_ContainsGitHubPagesAndLocalhostCorsOrigins()
     {
         var cancellationToken = TestContext.Current.CancellationToken;
         var json = await File.ReadAllTextAsync(GetRepositoryFilePath("src", "HslBikeDataAggregator", "local.settings.example.json"), cancellationToken);
@@ -31,7 +31,8 @@ public sealed class ScaffoldConfigurationTests
             .GetProperty("CORS")
             .GetString();
 
-        Assert.Equal("https://kuoste.github.io", corsOrigin);
+        Assert.Contains("https://kuoste.github.io", corsOrigin);
+        Assert.Contains("http://localhost:5000", corsOrigin);
     }
 
     [Fact]

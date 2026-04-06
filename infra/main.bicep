@@ -14,8 +14,10 @@ param location string = resourceGroup().location
 @minLength(2)
 param functionAppName string
 
-@description('Frontend origin allowed by Azure Functions CORS configuration.')
-param corsAllowedOrigin string = 'https://kuoste.github.io'
+@description('Frontend origins allowed by Azure Functions CORS configuration.')
+param corsAllowedOrigins array = [
+  'https://kuoste.github.io'
+]
 
 @description('Cron expression used by the PollStations timer trigger.')
 param pollIntervalCron string = '0 */15 * * * *'
@@ -158,9 +160,7 @@ resource functionApp 'Microsoft.Web/sites@2024-04-01' = {
         }
       ]
       cors: {
-        allowedOrigins: [
-          corsAllowedOrigin
-        ]
+        allowedOrigins: corsAllowedOrigins
         supportCredentials: false
       }
       ftpsState: 'Disabled'

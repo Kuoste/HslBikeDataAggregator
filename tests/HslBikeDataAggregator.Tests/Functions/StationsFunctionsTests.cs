@@ -23,7 +23,7 @@ namespace HslBikeDataAggregator.Tests.Functions;
 public sealed class StationsFunctionsTests
 {
     [Fact]
-    public async Task GetStations_ReturnsOkResponseWithCorsAndCacheHeaders()
+    public async Task GetStations_ReturnsOkResponseWithCacheHeaders()
     {
         var cancellationToken = TestContext.Current.CancellationToken;
         var services = new ServiceCollection();
@@ -89,8 +89,6 @@ public sealed class StationsFunctionsTests
         var responseData = await function.GetStations(request.Object, cancellationToken);
 
         Assert.Equal(HttpStatusCode.OK, responseData.StatusCode);
-        Assert.True(responseData.Headers.TryGetValues("Access-Control-Allow-Origin", out var origins));
-        Assert.Contains("https://kuoste.github.io", origins);
         Assert.True(responseData.Headers.TryGetValues("Cache-Control", out var cacheControl));
         Assert.Contains("public, max-age=120", cacheControl);
 
@@ -149,8 +147,6 @@ public sealed class StationsFunctionsTests
         var responseData = await function.GetSnapshots(request.Object, cancellationToken);
 
         Assert.Equal(HttpStatusCode.OK, responseData.StatusCode);
-        Assert.True(responseData.Headers.TryGetValues("Access-Control-Allow-Origin", out var origins));
-        Assert.Contains("https://kuoste.github.io", origins);
         Assert.True(responseData.Headers.TryGetValues("Cache-Control", out var cacheControl));
         Assert.Contains("public, max-age=900", cacheControl);
 
@@ -210,8 +206,6 @@ public sealed class StationsFunctionsTests
         var responseData = await function.GetStationAvailability(request.Object, "station-001", cancellationToken);
 
         Assert.Equal(HttpStatusCode.OK, responseData.StatusCode);
-        Assert.True(responseData.Headers.TryGetValues("Access-Control-Allow-Origin", out var origins));
-        Assert.Contains("https://kuoste.github.io", origins);
         Assert.True(responseData.Headers.TryGetValues("Cache-Control", out var cacheControl));
         Assert.Contains("public, max-age=3600", cacheControl);
 
@@ -269,8 +263,6 @@ public sealed class StationsFunctionsTests
         var responseData = await function.GetStationDestinations(request.Object, "station-001", cancellationToken);
 
         Assert.Equal(HttpStatusCode.OK, responseData.StatusCode);
-        Assert.True(responseData.Headers.TryGetValues("Access-Control-Allow-Origin", out var origins));
-        Assert.Contains("https://kuoste.github.io", origins);
         Assert.True(responseData.Headers.TryGetValues("Cache-Control", out var cacheControl));
         Assert.Contains("public, max-age=3600", cacheControl);
 
