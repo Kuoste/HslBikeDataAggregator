@@ -136,10 +136,55 @@ Azure infrastructure is defined in `infra/main.bicep` with environment parameter
 
 The template provisions:
 
-- Azure Functions hosting plan on the Consumption tier
-- Azure Function App
-- Storage account
-- Application Insights
+- Azure Functions Flex Consumption plan (FC1, Linux)
+- Azure Function App with system-assigned managed identity
+- Storage account (shared-key access disabled, OAuth-only)
+- Application Insights backed by Log Analytics workspace
+- Storage diagnostic settings
+
+### Post-deployment: assign storage RBAC roles
+
+The Function App uses a **managed identity** for storage access instead of connection strings. After the first deployment to a new environment (or after recreating the resource group), you must manually assign two RBAC roles to the managed identity.
+
+1. Deploy the infrastructure so the Function App and its managed identity are created.
+
+2. Retrieve the managed identity principal ID from the deployment outputs:
+
+   ```sh
+   az deployment group show \
+     --resource-group <resource-group> \
+     --name main \
+     --query properties.outputs.managedIdentityPrincipalId.value \
+     --output tsv
+   ```
+
+3. Assign the required storage roles:
+
+   ```sh
+   PRINCIPAL_ID="<principal-id-from-step-2>"
+   STORAGE_ACCOUNT=$(az deployment group show \
+     --resource-group <resource-group> \
+     --name main \
+     --query properties.outputs.storageAccountName.value \
+     --output tsv)
+   SCOPE="/subscriptions/<subscription-id>/resourceGroups/<resource-group>/providers/Microsoft.Storage/storageAccounts/$STORAGE_ACCOUNT"
+
+   # Storage Blob Data Owner — read/write blobs (snapshots, availability, destinations)
+   az role assignment create \
+     --assignee "$PRINCIPAL_ID" \
+     --role "Storage Blob Data Owner" \
+     --scope "$SCOPE"
+
+   # Storage Queue Data Contributor — Azure Functions host internal queue access
+   az role assignment create \
+     --assignee "$PRINCIPAL_ID" \
+     --role "Storage Queue Data Contributor" \
+     --scope "$SCOPE"
+   ```
+
+4. Re-run the deployment workflow (or restart the Function App) so it picks up the new permissions.
+
+> **Note:** These role assignments are scoped to the storage account and will be deleted if the resource group is removed. Repeat step 3 after recreating the resource group.
 
 ### GitHub environments
 
@@ -152,10 +197,10 @@ Recommended names for this repository:
 
 - `dev`
   - `AZURE_RESOURCE_GROUP=rg-hsl-bike-data-aggregator-dev`
-  - `AZURE_FUNCTION_APP_NAME=func-hsl-bike-data-aggregator-dev`
+  - `AZURE_FUNCTION_APP_NAME=func-hsl-bike-data-aggregator-dev-flex`
 - `prod`
   - `AZURE_RESOURCE_GROUP=rg-hsl-bike-data-aggregator-prod`
-  - `AZURE_FUNCTION_APP_NAME=func-hsl-bike-data-aggregator-prod`
+  - `AZURE_FUNCTION_APP_NAME=func-hsl-bike-data-aggregator-prod-flex`
 
 Set these environment variables in each environment:
 
@@ -178,7 +223,7 @@ One-time Azure setup:
 
 1. Create an Entra application or service principal for GitHub Actions.
 2. Add a federated credential for this repository and the target GitHub environment.
-3. Grant the identity `Contributor` access to the target resource group.
+3. Grant the identity **Contributor** access to the target subscription (or resource group). No elevated roles such as User Access Administrator are required — RBAC for the managed identity is assigned manually (see above).
 
 ### Workflows
 

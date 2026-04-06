@@ -197,16 +197,25 @@ public sealed class DeploymentWorkflowConfigurationTests
     }
 
     [Fact]
-    public async Task Infrastructure_AssignsStorageRbacRoles()
+    public async Task Infrastructure_OutputsManagedIdentityPrincipalId()
     {
         var cancellationToken = TestContext.Current.CancellationToken;
         var mainBicep = await File.ReadAllTextAsync(GetRepositoryFilePath("infra", "main.bicep"), cancellationToken);
 
-        Assert.Contains("b7e6dc6d-f1e8-4753-8033-0f276bb0955b", mainBicep, StringComparison.Ordinal);
-        Assert.Contains("974c5e8b-45b9-4653-ba55-5f855dd0fb88", mainBicep, StringComparison.Ordinal);
-        Assert.Contains("storageBlobDataOwnerRole", mainBicep, StringComparison.Ordinal);
-        Assert.Contains("storageQueueDataContributorRole", mainBicep, StringComparison.Ordinal);
-        Assert.Contains("principalType: 'ServicePrincipal'", mainBicep, StringComparison.Ordinal);
+        Assert.Contains("output managedIdentityPrincipalId string", mainBicep, StringComparison.Ordinal);
+        Assert.DoesNotContain("Microsoft.Authorization/roleAssignments", mainBicep, StringComparison.Ordinal);
+    }
+
+    [Fact]
+    public async Task Readme_DocumentsManualRbacAssignment()
+    {
+        var cancellationToken = TestContext.Current.CancellationToken;
+        var readme = await File.ReadAllTextAsync(GetRepositoryFilePath("README.md"), cancellationToken);
+
+        Assert.Contains("Storage Blob Data Owner", readme, StringComparison.Ordinal);
+        Assert.Contains("Storage Queue Data Contributor", readme, StringComparison.Ordinal);
+        Assert.Contains("az role assignment create", readme, StringComparison.Ordinal);
+        Assert.Contains("managedIdentityPrincipalId", readme, StringComparison.Ordinal);
     }
 
     [Fact]
