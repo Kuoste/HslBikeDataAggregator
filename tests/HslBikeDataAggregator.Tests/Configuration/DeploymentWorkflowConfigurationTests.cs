@@ -132,6 +132,8 @@ public sealed class DeploymentWorkflowConfigurationTests
         Assert.Contains("maximumInstanceCount:", mainBicep, StringComparison.Ordinal);
         Assert.Contains("deploymentStorageContainerName = 'deployment-packages'", mainBicep, StringComparison.Ordinal);
         Assert.DoesNotContain("WEBSITE_CONTENTSHARE", mainBicep, StringComparison.Ordinal);
+        Assert.DoesNotContain("FUNCTIONS_WORKER_RUNTIME", mainBicep, StringComparison.Ordinal);
+        Assert.DoesNotContain("FUNCTIONS_EXTENSION_VERSION", mainBicep, StringComparison.Ordinal);
     }
 
     [Fact]
