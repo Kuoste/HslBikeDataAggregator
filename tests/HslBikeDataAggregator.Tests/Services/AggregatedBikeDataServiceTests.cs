@@ -1,6 +1,13 @@
+using System.Net;
+using System.Text;
+
+using HslBikeDataAggregator.Configuration;
 using HslBikeDataAggregator.Models;
 using HslBikeDataAggregator.Services;
 using HslBikeDataAggregator.Storage;
+
+using Microsoft.Extensions.Logging.Abstractions;
+using Microsoft.Extensions.Options;
 
 using Moq;
 
@@ -11,26 +18,39 @@ public sealed class AggregatedBikeDataServiceTests
     private static readonly CancellationToken CancellationToken = CancellationToken.None;
 
     [Fact]
-    public async Task GetStationsAsync_ReturnsStationsFromBlobStorage()
+    public async Task GetStationsAsync_ReturnsStationsFromLiveStationCache()
     {
         var blobStorage = new Mock<IBikeDataBlobStorage>();
-        blobStorage
-            .Setup(storage => storage.GetLatestStationsAsync(CancellationToken))
-            .ReturnsAsync([
-                new BikeStation
-                {
-                    Id = "station-001",
-                    Name = "Central Station",
-                    Lat = 60.1708,
-                    Lon = 24.941,
-                    Capacity = 24,
-                    BikesAvailable = 8,
-                    SpacesAvailable = 16,
-                    IsActive = true
-                }
-            ]);
 
-        var service = new AggregatedBikeDataService(blobStorage.Object);
+        var service = CreateService(
+            blobStorage,
+            """
+            {
+              "data": {
+                "vehicleRentalStations": [
+                  {
+                    "stationId": "station-001",
+                    "name": "Central Station",
+                    "lat": 60.1708,
+                    "lon": 24.941,
+                    "allowPickup": true,
+                    "allowDropoff": true,
+                    "capacity": 24,
+                    "availableVehicles": {
+                      "byType": [
+                        { "count": 8 }
+                      ]
+                    },
+                    "availableSpaces": {
+                      "byType": [
+                        { "count": 16 }
+                      ]
+                    }
+                  }
+                ]
+              }
+            }
+            """);
 
         var result = await service.GetStationsAsync(CancellationToken);
 
@@ -39,14 +59,11 @@ public sealed class AggregatedBikeDataServiceTests
     }
 
     [Fact]
-    public async Task GetStationsAsync_ReturnsEmptyCollectionWhenBlobStorageHasNoStations()
+    public async Task GetStationsAsync_ReturnsEmptyCollectionWhenLiveStationCacheHasNoStations()
     {
         var blobStorage = new Mock<IBikeDataBlobStorage>();
-        blobStorage
-            .Setup(storage => storage.GetLatestStationsAsync(CancellationToken))
-            .ReturnsAsync([]);
 
-        var service = new AggregatedBikeDataService(blobStorage.Object);
+        var service = CreateService(blobStorage, EmptyStationsResponse);
 
         var result = await service.GetStationsAsync(CancellationToken);
 
@@ -70,7 +87,7 @@ public sealed class AggregatedBikeDataServiceTests
                 }
             ]);
 
-        var service = new AggregatedBikeDataService(blobStorage.Object);
+        var service = CreateService(blobStorage, EmptyStationsResponse);
 
         var result = await service.GetSnapshotsAsync(CancellationToken);
 
@@ -86,7 +103,7 @@ public sealed class AggregatedBikeDataServiceTests
             .Setup(storage => storage.GetRecentSnapshotsAsync(CancellationToken))
             .ReturnsAsync([]);
 
-        var service = new AggregatedBikeDataService(blobStorage.Object);
+        var service = CreateService(blobStorage, EmptyStationsResponse);
 
         var result = await service.GetSnapshotsAsync(CancellationToken);
 
@@ -107,7 +124,7 @@ public sealed class AggregatedBikeDataServiceTests
                 }
             ]);
 
-        var service = new AggregatedBikeDataService(blobStorage.Object);
+        var service = CreateService(blobStorage, EmptyStationsResponse);
 
         var result = await service.GetAvailabilityAsync("station-001", CancellationToken);
 
@@ -133,11 +150,53 @@ public sealed class AggregatedBikeDataServiceTests
                 }
             ]);
 
-        var service = new AggregatedBikeDataService(blobStorage.Object);
+        var service = CreateService(blobStorage, EmptyStationsResponse);
 
         var result = await service.GetDestinationsAsync("station-001", CancellationToken);
 
         var destination = Assert.Single(result);
         Assert.Equal("station-002", destination.ArrivalStationId);
+    }
+
+    private const string EmptyStationsResponse = """
+        {
+          "data": {
+            "vehicleRentalStations": []
+          }
+        }
+        """;
+
+    private static AggregatedBikeDataService CreateService(Mock<IBikeDataBlobStorage> blobStorage, string liveStationsResponse)
+        => new(blobStorage.Object, CreateLiveStationCacheService(liveStationsResponse));
+
+    private static LiveStationCacheService CreateLiveStationCacheService(string responseBody)
+    {
+        var handler = new StubHttpMessageHandler(_ => Task.FromResult(new HttpResponseMessage(HttpStatusCode.OK)
+        {
+            Content = new StringContent(responseBody, Encoding.UTF8, "application/json")
+        }));
+
+        var client = new DigitransitStationClient(
+            new HttpClient(handler),
+            Options.Create(new PollStationsOptions
+            {
+                DigitransitSubscriptionKey = "test-subscription-key"
+            }));
+
+        return new LiveStationCacheService(
+            client,
+            new FixedTimeProvider(new DateTimeOffset(2026, 4, 6, 10, 0, 0, TimeSpan.Zero)),
+            NullLogger<LiveStationCacheService>.Instance);
+    }
+
+    private sealed class StubHttpMessageHandler(Func<HttpRequestMessage, Task<HttpResponseMessage>> handler) : HttpMessageHandler
+    {
+        protected override Task<HttpResponseMessage> SendAsync(HttpRequestMessage request, CancellationToken cancellationToken)
+            => handler(request);
+    }
+
+    private sealed class FixedTimeProvider(DateTimeOffset timestamp) : TimeProvider
+    {
+        public override DateTimeOffset GetUtcNow() => timestamp;
     }
 }

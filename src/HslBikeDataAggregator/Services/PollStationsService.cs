@@ -34,7 +34,6 @@ public sealed class PollStationsService(
             .ToArray();
         var availabilityProfiles = availabilityProfileService.BuildProfiles(updatedSnapshots);
 
-        await bikeDataBlobStorage.WriteLatestStationsAsync(stations, cancellationToken);
         await bikeDataBlobStorage.WriteRecentSnapshotsAsync(updatedSnapshots, cancellationToken);
         foreach (var availabilityProfile in availabilityProfiles)
         {
@@ -42,7 +41,7 @@ public sealed class PollStationsService(
         }
 
         logger.LogInformation(
-            "Stored {StationCount} stations, {SnapshotCount} snapshots, and {AvailabilityProfileCount} hourly availability profiles at {Timestamp}.",
+            "Processed {StationCount} stations and stored {SnapshotCount} snapshots plus {AvailabilityProfileCount} hourly availability profiles at {Timestamp}.",
             stations.Count,
             updatedSnapshots.Length,
             availabilityProfiles.Count,

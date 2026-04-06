@@ -16,7 +16,7 @@ namespace HslBikeDataAggregator.Tests.Services;
 public sealed class PollStationsServiceTests
 {
     [Fact]
-    public async Task PollAsync_StoresLatestStationsAndTrimsSnapshotHistory()
+    public async Task PollAsync_StoresSnapshotsAndTrimsSnapshotHistory()
     {
         var capturedRequestBody = string.Empty;
         HttpRequestMessage? capturedRequest = null;
@@ -83,12 +83,6 @@ public sealed class PollStationsServiceTests
                 }
             ]);
 
-        IReadOnlyList<BikeStation>? latestStations = null;
-        blobStorage
-            .Setup(storage => storage.WriteLatestStationsAsync(It.IsAny<IReadOnlyList<BikeStation>>(), It.IsAny<CancellationToken>()))
-            .Callback<IReadOnlyList<BikeStation>, CancellationToken>((stations, _) => latestStations = stations)
-            .Returns(Task.CompletedTask);
-
         IReadOnlyList<StationSnapshot>? writtenSnapshots = null;
         blobStorage
             .Setup(storage => storage.WriteRecentSnapshotsAsync(It.IsAny<IReadOnlyList<StationSnapshot>>(), It.IsAny<CancellationToken>()))
@@ -118,13 +112,6 @@ public sealed class PollStationsServiceTests
         Assert.True(capturedRequest.Headers.TryGetValues("digitransit-subscription-key", out var headerValues));
         Assert.Contains("test-subscription-key", headerValues);
         Assert.Contains("vehicleRentalStations", capturedRequestBody);
-
-        var station = Assert.Single(latestStations!);
-        Assert.Equal("001", station.Id);
-        Assert.Equal("Central Station", station.Name);
-        Assert.Equal(9, station.BikesAvailable);
-        Assert.Equal(5, station.SpacesAvailable);
-        Assert.True(station.IsActive);
 
         Assert.NotNull(writtenSnapshots);
         Assert.Equal(2, writtenSnapshots!.Count);

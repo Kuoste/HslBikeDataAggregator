@@ -18,7 +18,7 @@ param functionAppName string
 param corsAllowedOrigin string = 'https://kuoste.github.io'
 
 @description('Cron expression used by the PollStations timer trigger.')
-param pollIntervalCron string = '0 */5 * * * *'
+param pollIntervalCron string = '0 */15 * * * *'
 
 @description('Number of snapshots retained in blob storage.')
 @minValue(1)
@@ -30,7 +30,8 @@ param historyProcessingCron string = '0 0 2 * * *'
 var appServicePlanName = '${functionAppName}-plan'
 var applicationInsightsName = '${functionAppName}-appi'
 var storageAccountName = take('st${toLower(replace(replace(functionAppName, '-', ''), '_', ''))}${uniqueString(resourceGroup().id)}', 24)
-var contentShareName = take(toLower('${replace(replace(functionAppName, '-', ''), '_', '')}${uniqueString(functionAppName)}'), 63)
+var deploymentStorageContainerName = 'deployment-packages'
+var deploymentStorageContainerUrl = 'https://${storageAccount.name}.blob.${environment().suffixes.storage}/${deploymentStorageContainerName}'
 var storageConnectionString = 'DefaultEndpointsProtocol=https;AccountName=${storageAccount.name};EndpointSuffix=${environment().suffixes.storage};AccountKey=${storageAccount.listKeys().keys[0].value}'
 
 resource storageAccount 'Microsoft.Storage/storageAccounts@2023-05-01' = {
@@ -70,16 +71,29 @@ resource applicationInsights 'Microsoft.Insights/components@2020-02-02' = {
   }
 }
 
-resource appServicePlan 'Microsoft.Web/serverfarms@2023-12-01' = {
+resource blobService 'Microsoft.Storage/storageAccounts/blobServices@2023-05-01' = {
+  name: 'default'
+  parent: storageAccount
+}
+
+resource deploymentStorageContainer 'Microsoft.Storage/storageAccounts/blobServices/containers@2023-05-01' = {
+  name: deploymentStorageContainerName
+  parent: blobService
+  properties: {
+    publicAccess: 'None'
+  }
+}
+
+resource appServicePlan 'Microsoft.Web/serverfarms@2024-04-01' = {
   name: appServicePlanName
   location: location
   kind: 'functionapp'
   sku: {
-    name: 'Y1'
-    tier: 'Dynamic'
+    name: 'FC1'
+    tier: 'FlexConsumption'
   }
   properties: {
-    reserved: false
+    reserved: true
   }
   tags: {
     'azd-env-name': environmentName
@@ -88,10 +102,10 @@ resource appServicePlan 'Microsoft.Web/serverfarms@2023-12-01' = {
   }
 }
 
-resource functionApp 'Microsoft.Web/sites@2023-12-01' = {
+resource functionApp 'Microsoft.Web/sites@2024-04-01' = {
   name: functionAppName
   location: location
-  kind: 'functionapp'
+  kind: 'functionapp,linux'
   identity: {
     type: 'SystemAssigned'
   }
@@ -99,6 +113,25 @@ resource functionApp 'Microsoft.Web/sites@2023-12-01' = {
     serverFarmId: appServicePlan.id
     httpsOnly: true
     clientAffinityEnabled: false
+    functionAppConfig: {
+      deployment: {
+        storage: {
+          type: 'blobContainer'
+          value: deploymentStorageContainerUrl
+          authentication: {
+            type: 'StorageAccountConnectionString'
+            storageAccountConnectionStringName: 'AzureWebJobsStorage'
+          }
+        }
+      }
+      runtime: {
+        name: 'dotnet-isolated'
+        version: '10.0'
+      }
+      scaleAndConcurrency: {
+        instanceMemoryMB: 512
+      }
+    }
     siteConfig: {
       alwaysOn: false
       appSettings: [
@@ -129,18 +162,6 @@ resource functionApp 'Microsoft.Web/sites@2023-12-01' = {
         {
           name: 'HistoryProcessingCron'
           value: historyProcessingCron
-        }
-        {
-          name: 'WEBSITE_CONTENTAZUREFILECONNECTIONSTRING'
-          value: storageConnectionString
-        }
-        {
-          name: 'WEBSITE_CONTENTSHARE'
-          value: contentShareName
-        }
-        {
-          name: 'WEBSITE_RUN_FROM_PACKAGE'
-          value: '1'
         }
       ]
       cors: {

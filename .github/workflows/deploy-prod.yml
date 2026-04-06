@@ -25,7 +25,7 @@ jobs:
     env:
       AZURE_LOCATION: ${{ vars.AZURE_LOCATION }}
       AZURE_RESOURCE_GROUP: ${{ vars.AZURE_RESOURCE_GROUP || 'rg-hsl-bike-data-aggregator-prod' }}
-      AZURE_FUNCTION_APP_NAME: ${{ vars.AZURE_FUNCTION_APP_NAME || 'func-hsl-bike-data-aggregator-prod' }}
+      AZURE_FUNCTION_APP_NAME: ${{ vars.AZURE_FUNCTION_APP_NAME || 'func-hsl-bike-data-aggregator-prod-flex' }}
 
     steps:
       - name: Check out repository
@@ -49,6 +49,9 @@ jobs:
 
       - name: Publish Function App
         run: dotnet publish src/HslBikeDataAggregator/HslBikeDataAggregator.csproj --configuration Release --output ./artifacts/publish
+
+      - name: Create deployment package
+        run: cd artifacts/publish && zip -r ../released-package.zip .
 
       - name: Sign in to Azure
         uses: azure/login@v2
@@ -97,5 +100,6 @@ jobs:
       - name: Deploy Function App package
         uses: Azure/functions-action@v1
         with:
-          app-name: ${{ vars.AZURE_FUNCTION_APP_NAME }}
-          package: ./artifacts/publish
+          app-name: ${{ env.AZURE_FUNCTION_APP_NAME }}
+          package: ./artifacts/released-package.zip
+          sku: flexconsumption

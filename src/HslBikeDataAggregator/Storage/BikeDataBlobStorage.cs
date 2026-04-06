@@ -11,9 +11,6 @@ public sealed class BikeDataBlobStorage(BlobContainerClient blobContainerClient)
 {
     private static readonly JsonSerializerOptions SerializerOptions = new(JsonSerializerDefaults.Web);
 
-    public Task<IReadOnlyList<BikeStation>> GetLatestStationsAsync(CancellationToken cancellationToken)
-        => ReadBlobAsync<BikeStation>(BikeDataBlobNames.LatestStations, cancellationToken);
-
     public async Task<IReadOnlyList<StationSnapshot>> GetRecentSnapshotsAsync(CancellationToken cancellationToken)
         => await ReadBlobAsync<StationSnapshot>(BikeDataBlobNames.RecentSnapshots, cancellationToken);
 
@@ -68,16 +65,6 @@ public sealed class BikeDataBlobStorage(BlobContainerClient blobContainerClient)
         {
             return [];
         }
-    }
-
-    public async Task WriteLatestStationsAsync(IReadOnlyList<BikeStation> stations, CancellationToken cancellationToken)
-    {
-        ArgumentNullException.ThrowIfNull(stations);
-
-        await blobContainerClient.CreateIfNotExistsAsync(cancellationToken: cancellationToken);
-        await blobContainerClient
-            .GetBlobClient(BikeDataBlobNames.LatestStations)
-            .UploadAsync(BinaryData.FromObjectAsJson(stations, SerializerOptions), overwrite: true, cancellationToken);
     }
 
     public async Task WriteRecentSnapshotsAsync(IReadOnlyList<StationSnapshot> snapshots, CancellationToken cancellationToken)

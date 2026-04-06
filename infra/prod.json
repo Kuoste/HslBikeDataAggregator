@@ -6,13 +6,13 @@
       "value": "prod"
     },
     "functionAppName": {
-      "value": "func-hsl-bike-data-aggregator-prod"
+      "value": "func-hsl-bike-data-aggregator-prod-flex"
     },
     "corsAllowedOrigin": {
       "value": "https://kuoste.github.io"
     },
     "pollIntervalCron": {
-      "value": "0 */5 * * * *"
+      "value": "0 */15 * * * *"
     },
     "snapshotHistoryLimit": {
       "value": 60

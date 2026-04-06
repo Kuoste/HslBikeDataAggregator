@@ -1,8 +1,10 @@
 using System.Net;
+using System.Text;
 using System.Security.Claims;
 
 using Azure.Core.Serialization;
 
+using HslBikeDataAggregator.Configuration;
 using HslBikeDataAggregator.Functions;
 using HslBikeDataAggregator.Models;
 using HslBikeDataAggregator.Services;
@@ -12,6 +14,7 @@ using Microsoft.Azure.Functions.Worker;
 using Microsoft.Azure.Functions.Worker.Http;
 using Microsoft.Extensions.DependencyInjection;
 using Microsoft.Extensions.Logging.Abstractions;
+using Microsoft.Extensions.Options;
 
 using Moq;
 
@@ -20,7 +23,7 @@ namespace HslBikeDataAggregator.Tests.Functions;
 public sealed class StationsFunctionsTests
 {
     [Fact]
-    public async Task GetStations_ReturnsOkResponseWithCorsHeader()
+    public async Task GetStations_ReturnsOkResponseWithCorsAndCacheHeaders()
     {
         var cancellationToken = TestContext.Current.CancellationToken;
         var services = new ServiceCollection();
@@ -50,29 +53,46 @@ public sealed class StationsFunctionsTests
         request.SetupGet(httpRequest => httpRequest.Url).Returns(new Uri("https://localhost/api/stations"));
 
         var blobStorage = new Mock<IBikeDataBlobStorage>();
-        blobStorage
-            .Setup(storage => storage.GetLatestStationsAsync(cancellationToken))
-            .ReturnsAsync([
-                new BikeStation
-                {
-                    Id = "station-001",
-                    Name = "Central Station",
-                    Lat = 60.1708,
-                    Lon = 24.941,
-                    Capacity = 24,
-                    BikesAvailable = 8,
-                    SpacesAvailable = 16,
-                    IsActive = true
-                }
-            ]);
 
-        var function = new StationsFunctions(new AggregatedBikeDataService(blobStorage.Object), NullLogger<StationsFunctions>.Instance);
+        var function = new StationsFunctions(
+            CreateBikeDataService(
+                blobStorage,
+                """
+                {
+                  "data": {
+                    "vehicleRentalStations": [
+                      {
+                        "stationId": "station-001",
+                        "name": "Central Station",
+                        "lat": 60.1708,
+                        "lon": 24.941,
+                        "allowPickup": true,
+                        "allowDropoff": true,
+                        "capacity": 24,
+                        "availableVehicles": {
+                          "byType": [
+                            { "count": 8 }
+                          ]
+                        },
+                        "availableSpaces": {
+                          "byType": [
+                            { "count": 16 }
+                          ]
+                        }
+                      }
+                    ]
+                  }
+                }
+                """),
+            NullLogger<StationsFunctions>.Instance);
 
         var responseData = await function.GetStations(request.Object, cancellationToken);
 
         Assert.Equal(HttpStatusCode.OK, responseData.StatusCode);
         Assert.True(responseData.Headers.TryGetValues("Access-Control-Allow-Origin", out var origins));
         Assert.Contains("https://kuoste.github.io", origins);
+        Assert.True(responseData.Headers.TryGetValues("Cache-Control", out var cacheControl));
+        Assert.Contains("public, max-age=120", cacheControl);
 
         responseData.Body.Position = 0;
         using var reader = new StreamReader(responseData.Body);
@@ -124,13 +144,15 @@ public sealed class StationsFunctionsTests
                 }
             ]);
 
-        var function = new StationsFunctions(new AggregatedBikeDataService(blobStorage.Object), NullLogger<StationsFunctions>.Instance);
+        var function = new StationsFunctions(CreateBikeDataService(blobStorage), NullLogger<StationsFunctions>.Instance);
 
         var responseData = await function.GetSnapshots(request.Object, cancellationToken);
 
         Assert.Equal(HttpStatusCode.OK, responseData.StatusCode);
         Assert.True(responseData.Headers.TryGetValues("Access-Control-Allow-Origin", out var origins));
         Assert.Contains("https://kuoste.github.io", origins);
+        Assert.True(responseData.Headers.TryGetValues("Cache-Control", out var cacheControl));
+        Assert.Contains("public, max-age=900", cacheControl);
 
         responseData.Body.Position = 0;
         using var reader = new StreamReader(responseData.Body);
@@ -183,13 +205,15 @@ public sealed class StationsFunctionsTests
                 }
             ]);
 
-        var function = new StationsFunctions(new AggregatedBikeDataService(blobStorage.Object), NullLogger<StationsFunctions>.Instance);
+        var function = new StationsFunctions(CreateBikeDataService(blobStorage), NullLogger<StationsFunctions>.Instance);
 
         var responseData = await function.GetStationAvailability(request.Object, "station-001", cancellationToken);
 
         Assert.Equal(HttpStatusCode.OK, responseData.StatusCode);
         Assert.True(responseData.Headers.TryGetValues("Access-Control-Allow-Origin", out var origins));
         Assert.Contains("https://kuoste.github.io", origins);
+        Assert.True(responseData.Headers.TryGetValues("Cache-Control", out var cacheControl));
+        Assert.Contains("public, max-age=3600", cacheControl);
 
         responseData.Body.Position = 0;
         using var reader = new StreamReader(responseData.Body);
@@ -240,16 +264,60 @@ public sealed class StationsFunctionsTests
                 }
             ]);
 
-        var function = new StationsFunctions(new AggregatedBikeDataService(blobStorage.Object), NullLogger<StationsFunctions>.Instance);
+        var function = new StationsFunctions(CreateBikeDataService(blobStorage), NullLogger<StationsFunctions>.Instance);
 
         var responseData = await function.GetStationDestinations(request.Object, "station-001", cancellationToken);
 
         Assert.Equal(HttpStatusCode.OK, responseData.StatusCode);
         Assert.True(responseData.Headers.TryGetValues("Access-Control-Allow-Origin", out var origins));
         Assert.Contains("https://kuoste.github.io", origins);
+        Assert.True(responseData.Headers.TryGetValues("Cache-Control", out var cacheControl));
+        Assert.Contains("public, max-age=3600", cacheControl);
 
         responseData.Body.Position = 0;
         using var reader = new StreamReader(responseData.Body);
         Assert.Equal("[{\"departureStationId\":\"station-001\",\"arrivalStationId\":\"station-002\",\"tripCount\":12,\"averageDurationSeconds\":425.5,\"averageDistanceMetres\":1280.2}]", await reader.ReadToEndAsync(cancellationToken));
+    }
+
+    private const string EmptyStationsResponse = """
+        {
+          "data": {
+            "vehicleRentalStations": []
+          }
+        }
+        """;
+
+    private static AggregatedBikeDataService CreateBikeDataService(Mock<IBikeDataBlobStorage> blobStorage, string liveStationsResponse = EmptyStationsResponse)
+        => new(blobStorage.Object, CreateLiveStationCacheService(liveStationsResponse));
+
+    private static LiveStationCacheService CreateLiveStationCacheService(string responseBody)
+    {
+        var handler = new StubHttpMessageHandler(_ => Task.FromResult(new HttpResponseMessage(HttpStatusCode.OK)
+        {
+            Content = new StringContent(responseBody, Encoding.UTF8, "application/json")
+        }));
+
+        var client = new DigitransitStationClient(
+            new HttpClient(handler),
+            Options.Create(new PollStationsOptions
+            {
+                DigitransitSubscriptionKey = "test-subscription-key"
+            }));
+
+        return new LiveStationCacheService(
+            client,
+            new FixedTimeProvider(new DateTimeOffset(2026, 4, 6, 10, 0, 0, TimeSpan.Zero)),
+            NullLogger<LiveStationCacheService>.Instance);
+    }
+
+    private sealed class StubHttpMessageHandler(Func<HttpRequestMessage, Task<HttpResponseMessage>> handler) : HttpMessageHandler
+    {
+        protected override Task<HttpResponseMessage> SendAsync(HttpRequestMessage request, CancellationToken cancellationToken)
+            => handler(request);
+    }
+
+    private sealed class FixedTimeProvider(DateTimeOffset timestamp) : TimeProvider
+    {
+        public override DateTimeOffset GetUtcNow() => timestamp;
     }
 }

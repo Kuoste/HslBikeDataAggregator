@@ -4,10 +4,12 @@ using HslBikeDataAggregator.Models;
 
 namespace HslBikeDataAggregator.Services;
 
-public sealed class AggregatedBikeDataService(IBikeDataBlobStorage bikeDataBlobStorage)
+public sealed class AggregatedBikeDataService(
+    IBikeDataBlobStorage bikeDataBlobStorage,
+    LiveStationCacheService liveStationCacheService)
 {
     public Task<IReadOnlyList<BikeStation>> GetStationsAsync(CancellationToken cancellationToken)
-        => bikeDataBlobStorage.GetLatestStationsAsync(cancellationToken);
+        => liveStationCacheService.GetStationsAsync(cancellationToken);
 
     public Task<IReadOnlyList<StationSnapshot>> GetSnapshotsAsync(CancellationToken cancellationToken)
         => bikeDataBlobStorage.GetRecentSnapshotsAsync(cancellationToken);
