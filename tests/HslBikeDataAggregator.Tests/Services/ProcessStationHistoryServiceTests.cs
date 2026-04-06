@@ -52,6 +52,7 @@ public sealed class ProcessStationHistoryServiceTests
         var options = Options.Create(new HistoryProcessingOptions
         {
             TripHistoryUrlPattern = "https://example.test/{0:yyyy-MM}.csv",
+            AllowedTripHistoryHost = "example.test",
             RollingWindowMonthCount = 2,
             AvailabilityProbeMonthCount = 6
         });
@@ -129,6 +130,7 @@ public sealed class ProcessStationHistoryServiceTests
         var options = Options.Create(new HistoryProcessingOptions
         {
             TripHistoryUrlPattern = "https://example.test/{0:yyyy-MM}.csv",
+            AllowedTripHistoryHost = "example.test",
             RollingWindowMonthCount = 2,
             AvailabilityProbeMonthCount = 6
         });
@@ -192,6 +194,7 @@ public sealed class ProcessStationHistoryServiceTests
         var options = Options.Create(new HistoryProcessingOptions
         {
             TripHistoryUrlPattern = "https://example.test/{0:yyyy-MM}.csv",
+            AllowedTripHistoryHost = "example.test",
             RollingWindowMonthCount = 2,
             AvailabilityProbeMonthCount = 3
         });
@@ -213,6 +216,40 @@ public sealed class ProcessStationHistoryServiceTests
         blobStorage.Verify(storage => storage.WriteStationDestinationsAsync(It.IsAny<string>(), It.IsAny<IReadOnlyList<StationHistory>>(), It.IsAny<CancellationToken>()), Times.Never);
         blobStorage.Verify(storage => storage.ListStationDestinationIdsAsync(It.IsAny<CancellationToken>()), Times.Never);
         blobStorage.Verify(storage => storage.DeleteStationDestinationsAsync(It.IsAny<string>(), It.IsAny<CancellationToken>()), Times.Never);
+    }
+
+    [Theory]
+    [InlineData("http://example.test/{0:yyyy-MM}.csv", "example.test", "HTTP scheme")]
+    [InlineData("https://evil.example.com/{0:yyyy-MM}.csv", "example.test", "wrong host")]
+    [InlineData("ftp://example.test/{0:yyyy-MM}.csv", "example.test", "FTP scheme")]
+    public async Task ProcessAsync_RejectsUrlWithInvalidSchemeOrHost(string urlPattern, string allowedHost, string reason)
+    {
+        _ = reason;
+
+        var handler = new StubHttpMessageHandler(_ =>
+            Task.FromResult(CreateResponse(HttpStatusCode.OK,
+                """
+                Departure station id,Return station id,Covered distance (m),Duration (sec.)
+                001,002,1200,300
+                """)));
+
+        var options = Options.Create(new HistoryProcessingOptions
+        {
+            TripHistoryUrlPattern = urlPattern,
+            AllowedTripHistoryHost = allowedHost,
+            RollingWindowMonthCount = 1,
+            AvailabilityProbeMonthCount = 1
+        });
+
+        var blobStorage = new Mock<IBikeDataBlobStorage>();
+        var service = new ProcessStationHistoryService(
+            new HttpClient(handler),
+            options,
+            blobStorage.Object,
+            new FixedTimeProvider(new DateTimeOffset(2024, 7, 15, 0, 0, 0, TimeSpan.Zero)),
+            NullLogger<ProcessStationHistoryService>.Instance);
+
+        await Assert.ThrowsAsync<InvalidOperationException>(() => service.ProcessAsync(TestContext.Current.CancellationToken));
     }
 
     private static HttpResponseMessage CreateResponse(HttpStatusCode statusCode, string? content = null)

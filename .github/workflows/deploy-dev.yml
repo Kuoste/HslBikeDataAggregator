@@ -26,10 +26,10 @@ jobs:
 
     steps:
       - name: Check out repository
-        uses: actions/checkout@v4
+        uses: actions/checkout@34e114876b0b11c390a56381ad16ebd13914f8d5 # v4.3.1
 
       - name: Set up .NET SDK
-        uses: actions/setup-dotnet@v4
+        uses: actions/setup-dotnet@67a3573c9a986a3f9c594539f4ab511d57bb3ce9 # v4.3.1
         with:
           dotnet-version: 10.0.x
 
@@ -49,14 +49,14 @@ jobs:
         run: cd artifacts/publish && zip -r ../released-package.zip .
 
       - name: Sign in to Azure
-        uses: azure/login@v2
+        uses: azure/login@a457da9ea143d694b1b9c7c869ebb04ebe844ef5 # v2.3.0
         with:
           client-id: ${{ secrets.AZURE_CLIENT_ID }}
           tenant-id: ${{ secrets.AZURE_TENANT_ID }}
           subscription-id: ${{ secrets.AZURE_SUBSCRIPTION_ID }}
 
       - name: Create resource group if needed
-        uses: azure/cli@v2
+        uses: azure/cli@9f7ce6f37c31b777ec6c6b6d1dfe7db79f497956 # v2.2.0
         with:
           inlineScript: |
             az group create \
@@ -64,7 +64,7 @@ jobs:
               --location "$AZURE_LOCATION"
 
       - name: Deploy infrastructure
-        uses: azure/cli@v2
+        uses: azure/cli@9f7ce6f37c31b777ec6c6b6d1dfe7db79f497956 # v2.2.0
         with:
           inlineScript: |
             az deployment group create \
@@ -75,7 +75,7 @@ jobs:
               location="$AZURE_LOCATION"
 
       - name: Configure Digitransit subscription key
-        uses: azure/cli@v2
+        uses: azure/cli@9f7ce6f37c31b777ec6c6b6d1dfe7db79f497956 # v2.2.0
         with:
           inlineScript: |
             az functionapp config appsettings set \
@@ -84,7 +84,7 @@ jobs:
               --settings DigitransitSubscriptionKey="${{ secrets.DIGITRANSIT_SUBSCRIPTION_KEY }}"
 
       - name: Configure history processing settings
-        uses: azure/cli@v2
+        uses: azure/cli@9f7ce6f37c31b777ec6c6b6d1dfe7db79f497956 # v2.2.0
         with:
           inlineScript: |
             az functionapp config appsettings set \
@@ -93,7 +93,7 @@ jobs:
               --settings HistoryProcessingCron="${{ vars.HISTORY_PROCESSING_CRON || '0 0 2 * * *' }}"
 
       - name: Deploy Function App package
-        uses: Azure/functions-action@v1
+        uses: Azure/functions-action@ac2abfb0e49d12ed5d273a3cb39f01bdd1654c43 # v1
         with:
           app-name: ${{ env.AZURE_FUNCTION_APP_NAME }}
           package: ./artifacts/released-package.zip

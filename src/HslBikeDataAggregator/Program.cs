@@ -1,3 +1,4 @@
+using Azure.Identity;
 using Azure.Storage.Blobs;
 
 using HslBikeDataAggregator.Configuration;
@@ -42,13 +43,23 @@ builder.Services.AddSingleton<LiveStationCacheService>();
 builder.Services.AddSingleton(provider =>
 {
     var configuration = provider.GetRequiredService<IConfiguration>();
+
+    // Local development: use connection string (e.g. Azurite with UseDevelopmentStorage=true)
     var connectionString = configuration["AzureWebJobsStorage"];
-    if (string.IsNullOrWhiteSpace(connectionString))
+    if (!string.IsNullOrWhiteSpace(connectionString))
     {
-        throw new InvalidOperationException("AzureWebJobsStorage setting is required.");
+        return new BlobContainerClient(connectionString, BikeDataBlobNames.ContainerName);
     }
 
-    return new BlobContainerClient(connectionString, BikeDataBlobNames.ContainerName);
+    // Azure: use Managed Identity via AzureWebJobsStorage__accountName
+    var accountName = configuration["AzureWebJobsStorage__accountName"];
+    if (!string.IsNullOrWhiteSpace(accountName))
+    {
+        var containerUri = new Uri($"https://{accountName}.blob.core.windows.net/{BikeDataBlobNames.ContainerName}");
+        return new BlobContainerClient(containerUri, new DefaultAzureCredential());
+    }
+
+    throw new InvalidOperationException("Storage is not configured. Set either AzureWebJobsStorage (local) or AzureWebJobsStorage__accountName (Azure).");
 });
 builder.Services.AddSingleton<IBikeDataBlobStorage, BikeDataBlobStorage>();
 builder.Services.AddSingleton<IPollStationsService, PollStationsService>();

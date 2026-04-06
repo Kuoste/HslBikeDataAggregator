@@ -182,6 +182,99 @@ public sealed class DeploymentWorkflowConfigurationTests
         Assert.Contains("## Status", markdown, StringComparison.Ordinal);
     }
 
+    [Fact]
+    public async Task Infrastructure_UsesManagedIdentityStorage()
+    {
+        var cancellationToken = TestContext.Current.CancellationToken;
+        var mainBicep = await File.ReadAllTextAsync(GetRepositoryFilePath("infra", "main.bicep"), cancellationToken);
+
+        Assert.Contains("allowSharedKeyAccess: false", mainBicep, StringComparison.Ordinal);
+        Assert.Contains("defaultToOAuthAuthentication: true", mainBicep, StringComparison.Ordinal);
+        Assert.Contains("AzureWebJobsStorage__accountName", mainBicep, StringComparison.Ordinal);
+        Assert.DoesNotContain("AzureWebJobsStorage'", mainBicep, StringComparison.Ordinal);
+        Assert.Contains("type: 'SystemAssignedIdentity'", mainBicep, StringComparison.Ordinal);
+        Assert.Contains("type: 'SystemAssigned'", mainBicep, StringComparison.Ordinal);
+    }
+
+    [Fact]
+    public async Task Infrastructure_AssignsStorageRbacRoles()
+    {
+        var cancellationToken = TestContext.Current.CancellationToken;
+        var mainBicep = await File.ReadAllTextAsync(GetRepositoryFilePath("infra", "main.bicep"), cancellationToken);
+
+        Assert.Contains("b7e6dc6d-f1e8-4753-8033-0f276bb0955b", mainBicep, StringComparison.Ordinal);
+        Assert.Contains("974c5e8b-45b9-4653-ba55-5f855dd0fb88", mainBicep, StringComparison.Ordinal);
+        Assert.Contains("storageBlobDataOwnerRole", mainBicep, StringComparison.Ordinal);
+        Assert.Contains("storageQueueDataContributorRole", mainBicep, StringComparison.Ordinal);
+        Assert.Contains("principalType: 'ServicePrincipal'", mainBicep, StringComparison.Ordinal);
+    }
+
+    [Fact]
+    public async Task Infrastructure_HasLogAnalyticsBackedApplicationInsights()
+    {
+        var cancellationToken = TestContext.Current.CancellationToken;
+        var mainBicep = await File.ReadAllTextAsync(GetRepositoryFilePath("infra", "main.bicep"), cancellationToken);
+
+        Assert.Contains("Microsoft.OperationalInsights/workspaces", mainBicep, StringComparison.Ordinal);
+        Assert.Contains("WorkspaceResourceId: logAnalyticsWorkspace.id", mainBicep, StringComparison.Ordinal);
+        Assert.Contains("logAnalyticsWorkspaceName", mainBicep, StringComparison.Ordinal);
+    }
+
+    [Fact]
+    public async Task Infrastructure_ConfiguresStorageDiagnosticSettings()
+    {
+        var cancellationToken = TestContext.Current.CancellationToken;
+        var mainBicep = await File.ReadAllTextAsync(GetRepositoryFilePath("infra", "main.bicep"), cancellationToken);
+
+        Assert.Contains("Microsoft.Insights/diagnosticSettings", mainBicep, StringComparison.Ordinal);
+        Assert.Contains("StorageWrite", mainBicep, StringComparison.Ordinal);
+        Assert.Contains("StorageRead", mainBicep, StringComparison.Ordinal);
+        Assert.Contains("StorageDelete", mainBicep, StringComparison.Ordinal);
+    }
+
+    [Fact]
+    public async Task DeployWorkflows_PinActionsToCommitShas()
+    {
+        var cancellationToken = TestContext.Current.CancellationToken;
+        var devYaml = await File.ReadAllTextAsync(GetRepositoryFilePath(".github", "workflows", "deploy-dev.yml"), cancellationToken);
+        var prodYaml = await File.ReadAllTextAsync(GetRepositoryFilePath(".github", "workflows", "deploy-prod.yml"), cancellationToken);
+        var ciYaml = await File.ReadAllTextAsync(GetRepositoryFilePath(".github", "workflows", "ci.yml"), cancellationToken);
+
+        var workflows = new[] { devYaml, prodYaml, ciYaml };
+        foreach (var yaml in workflows)
+        {
+            Assert.DoesNotMatch(@"uses:\s+\S+@v\d", yaml);
+        }
+    }
+
+    [Fact]
+    public async Task DeployProdWorkflow_RestrictsGitRefToMain()
+    {
+        var cancellationToken = TestContext.Current.CancellationToken;
+        var prodYaml = await File.ReadAllTextAsync(GetRepositoryFilePath(".github", "workflows", "deploy-prod.yml"), cancellationToken);
+
+        Assert.Contains("Validate deployment ref", prodYaml, StringComparison.Ordinal);
+        Assert.Contains("Production deployments are restricted to the main branch", prodYaml, StringComparison.Ordinal);
+    }
+
+    [Fact]
+    public void Dependabot_ConfigurationExists()
+    {
+        var path = GetRepositoryFilePath(".github", "dependabot.yml");
+
+        Assert.True(File.Exists(path));
+    }
+
+    [Fact]
+    public async Task Dependabot_MonitorsNuGetAndGitHubActions()
+    {
+        var cancellationToken = TestContext.Current.CancellationToken;
+        var dependabotYaml = await File.ReadAllTextAsync(GetRepositoryFilePath(".github", "dependabot.yml"), cancellationToken);
+
+        Assert.Contains("package-ecosystem: nuget", dependabotYaml, StringComparison.Ordinal);
+        Assert.Contains("package-ecosystem: github-actions", dependabotYaml, StringComparison.Ordinal);
+    }
+
     private static string GetRepositoryFilePath(params string[] parts)
     {
         var repositoryRoot = Path.GetFullPath(Path.Combine(AppContext.BaseDirectory, "..", "..", "..", "..", ".."));

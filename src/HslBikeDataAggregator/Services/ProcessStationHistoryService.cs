@@ -20,6 +20,9 @@ public sealed class ProcessStationHistoryService(
     private readonly string tripHistoryUrlPattern = string.IsNullOrWhiteSpace(options.Value.TripHistoryUrlPattern)
         ? HistoryProcessingOptions.DefaultTripHistoryUrlPattern
         : options.Value.TripHistoryUrlPattern;
+    private readonly string allowedTripHistoryHost = string.IsNullOrWhiteSpace(options.Value.AllowedTripHistoryHost)
+        ? HistoryProcessingOptions.DefaultAllowedTripHistoryHost
+        : options.Value.AllowedTripHistoryHost;
     private readonly int rollingWindowMonthCount = Math.Max(options.Value.RollingWindowMonthCount, 1);
     private readonly int availabilityProbeMonthCount = Math.Max(options.Value.AvailabilityProbeMonthCount, Math.Max(options.Value.RollingWindowMonthCount, 1));
 
@@ -115,7 +118,19 @@ public sealed class ProcessStationHistoryService(
     }
 
     private string BuildTripHistoryUrl(DateOnly month)
-        => string.Format(CultureInfo.InvariantCulture, tripHistoryUrlPattern, month.ToDateTime(TimeOnly.MinValue));
+    {
+        var url = string.Format(CultureInfo.InvariantCulture, tripHistoryUrlPattern, month.ToDateTime(TimeOnly.MinValue));
+
+        if (!Uri.TryCreate(url, UriKind.Absolute, out var uri)
+            || !string.Equals(uri.Scheme, "https", StringComparison.OrdinalIgnoreCase)
+            || !string.Equals(uri.Host, allowedTripHistoryHost, StringComparison.OrdinalIgnoreCase))
+        {
+            throw new InvalidOperationException(
+                $"The resolved trip history URL '{url}' does not target the allowed host (https://{allowedTripHistoryHost}).");
+        }
+
+        return url;
+    }
 
     private async Task<int> AggregateSourceAsync(
         string sourceUrl,
