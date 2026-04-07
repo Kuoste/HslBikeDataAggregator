@@ -29,12 +29,23 @@ param snapshotHistoryLimit int = 60
 @description('Cron expression used by the ProcessStationHistory timer trigger.')
 param historyProcessingCron string = '0 0 2 * * *'
 
+var managedIdentityName = '${functionAppName}-id'
 var appServicePlanName = '${functionAppName}-plan'
 var applicationInsightsName = '${functionAppName}-appi'
 var logAnalyticsWorkspaceName = '${functionAppName}-law'
 var storageAccountName = take('st${toLower(replace(replace(functionAppName, '-', ''), '_', ''))}${uniqueString(resourceGroup().id)}', 24)
 var deploymentStorageContainerName = 'deployment-packages'
 var deploymentStorageContainerUrl = 'https://${storageAccount.name}.blob.${environment().suffixes.storage}/${deploymentStorageContainerName}'
+
+resource managedIdentity 'Microsoft.ManagedIdentity/userAssignedIdentities@2023-01-31' = {
+  name: managedIdentityName
+  location: location
+  tags: {
+    'azd-env-name': environmentName
+    environment: environmentName
+    project: 'HslBikeDataAggregator'
+  }
+}
 
 // Built-in role definition IDs
 var storageBlobDataOwnerRoleId = 'b7e6dc6d-f1e8-4753-8033-0f276bb0955b'
@@ -131,7 +142,10 @@ resource functionApp 'Microsoft.Web/sites@2024-04-01' = {
   location: location
   kind: 'functionapp,linux'
   identity: {
-    type: 'SystemAssigned'
+    type: 'UserAssigned'
+    userAssignedIdentities: {
+      '${managedIdentity.id}': {}
+    }
   }
   properties: {
     serverFarmId: appServicePlan.id
@@ -143,7 +157,8 @@ resource functionApp 'Microsoft.Web/sites@2024-04-01' = {
           type: 'blobContainer'
           value: deploymentStorageContainerUrl
           authentication: {
-            type: 'SystemAssignedIdentity'
+            type: 'UserAssignedIdentity'
+            userAssignedIdentityResourceId: managedIdentity.id
           }
         }
       }
@@ -166,6 +181,14 @@ resource functionApp 'Microsoft.Web/sites@2024-04-01' = {
         {
           name: 'AzureWebJobsStorage__accountName'
           value: storageAccount.name
+        }
+        {
+          name: 'AzureWebJobsStorage__clientId'
+          value: managedIdentity.properties.clientId
+        }
+        {
+          name: 'AzureWebJobsStorage__credential'
+          value: 'managedidentity'
         }
         {
           name: 'PollIntervalCron'
@@ -198,21 +221,21 @@ resource functionApp 'Microsoft.Web/sites@2024-04-01' = {
 
 // Role assignments for Managed Identity storage access
 resource storageBlobDataOwnerRole 'Microsoft.Authorization/roleAssignments@2022-04-01' = {
-  name: guid(storageAccount.id, functionApp.id, storageBlobDataOwnerRoleId)
+  name: guid(storageAccount.id, managedIdentity.id, storageBlobDataOwnerRoleId)
   scope: storageAccount
   properties: {
     roleDefinitionId: subscriptionResourceId('Microsoft.Authorization/roleDefinitions', storageBlobDataOwnerRoleId)
-    principalId: functionApp.identity.principalId
+    principalId: managedIdentity.properties.principalId
     principalType: 'ServicePrincipal'
   }
 }
 
 resource storageQueueDataContributorRole 'Microsoft.Authorization/roleAssignments@2022-04-01' = {
-  name: guid(storageAccount.id, functionApp.id, storageQueueDataContributorRoleId)
+  name: guid(storageAccount.id, managedIdentity.id, storageQueueDataContributorRoleId)
   scope: storageAccount
   properties: {
     roleDefinitionId: subscriptionResourceId('Microsoft.Authorization/roleDefinitions', storageQueueDataContributorRoleId)
-    principalId: functionApp.identity.principalId
+    principalId: managedIdentity.properties.principalId
     principalType: 'ServicePrincipal'
   }
 }
@@ -251,4 +274,5 @@ output functionHostname string = 'https://${functionApp.properties.defaultHostNa
 output storageAccountName string = storageAccount.name
 output applicationInsightsName string = applicationInsights.name
 output logAnalyticsWorkspaceName string = logAnalyticsWorkspace.name
-output managedIdentityPrincipalId string = functionApp.identity.principalId
+output managedIdentityPrincipalId string = managedIdentity.properties.principalId
+output managedIdentityClientId string = managedIdentity.properties.clientId

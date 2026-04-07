@@ -56,7 +56,14 @@ builder.Services.AddSingleton(provider =>
     if (!string.IsNullOrWhiteSpace(accountName))
     {
         var containerUri = new Uri($"https://{accountName}.blob.core.windows.net/{BikeDataBlobNames.ContainerName}");
-        return new BlobContainerClient(containerUri, new DefaultAzureCredential());
+
+        // Use user-assigned managed identity when a client ID is configured
+        var clientId = configuration["AzureWebJobsStorage__clientId"];
+        var credential = string.IsNullOrWhiteSpace(clientId)
+            ? new DefaultAzureCredential()
+            : new DefaultAzureCredential(new DefaultAzureCredentialOptions { ManagedIdentityClientId = clientId });
+
+        return new BlobContainerClient(containerUri, credential);
     }
 
     throw new InvalidOperationException("Storage is not configured. Set either AzureWebJobsStorage (local) or AzureWebJobsStorage__accountName (Azure).");

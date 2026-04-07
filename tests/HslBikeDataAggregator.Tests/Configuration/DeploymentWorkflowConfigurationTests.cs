@@ -192,8 +192,10 @@ public sealed class DeploymentWorkflowConfigurationTests
         Assert.Contains("defaultToOAuthAuthentication: true", mainBicep, StringComparison.Ordinal);
         Assert.Contains("AzureWebJobsStorage__accountName", mainBicep, StringComparison.Ordinal);
         Assert.DoesNotContain("AzureWebJobsStorage'", mainBicep, StringComparison.Ordinal);
-        Assert.Contains("type: 'SystemAssignedIdentity'", mainBicep, StringComparison.Ordinal);
-        Assert.Contains("type: 'SystemAssigned'", mainBicep, StringComparison.Ordinal);
+        Assert.Contains("type: 'UserAssignedIdentity'", mainBicep, StringComparison.Ordinal);
+        Assert.Contains("type: 'UserAssigned'", mainBicep, StringComparison.Ordinal);
+        Assert.Contains("AzureWebJobsStorage__clientId", mainBicep, StringComparison.Ordinal);
+        Assert.Contains("AzureWebJobsStorage__credential", mainBicep, StringComparison.Ordinal);
     }
 
     [Fact]

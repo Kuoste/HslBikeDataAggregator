@@ -136,9 +136,10 @@ Azure infrastructure is defined in `infra/main.bicep` with environment parameter
 
 The template provisions:
 
-- Azure Functions hosting plan on the Consumption tier
-- Azure Function App
-- Storage account
+- Azure Functions hosting plan on the Flex Consumption tier (FC1)
+- User-assigned managed identity (for secure resource access without connection strings)
+- Azure Function App (configured with identity-managed connections)
+- Storage account (with Blob Data Owner RBAC for functions)
 - Application Insights
 
 ### GitHub environments
@@ -178,7 +179,9 @@ One-time Azure setup:
 
 1. Create an Entra application or service principal for GitHub Actions.
 2. Add a federated credential for this repository and the target GitHub environment.
-3. Grant the identity `Contributor` access to the target resource group.
+3. Pre-create the target resource group (e.g. `rg-hsl-bike-data-aggregator-prod`).
+4. Grant the identity **Contributor** and **Role Based Access Control Administrator** access to the target resource group.
+   - The `Role Based Access Control Administrator` role is required so the Bicep deployment can automatically assign permissions to the Managed Identity (e.g., `Storage Blob Data Owner`).
 
 ### Workflows
 
