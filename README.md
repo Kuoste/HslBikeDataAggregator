@@ -139,7 +139,6 @@ The template provisions:
 - Azure Functions hosting plan on the Flex Consumption tier (FC1)
 - User-assigned managed identity (for secure resource access without connection strings)
 - Azure Function App (configured with identity-managed connections)
-- Azure API Management (Consumption tier) for exposing backend endpoints securely
 - Storage account (with Blob Data Owner RBAC for functions)
 - Application Insights
 

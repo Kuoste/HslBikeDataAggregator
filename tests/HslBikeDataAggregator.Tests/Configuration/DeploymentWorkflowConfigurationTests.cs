@@ -212,20 +212,6 @@ public sealed class DeploymentWorkflowConfigurationTests
     }
 
     [Fact]
-    public async Task Infrastructure_ProvisionsApiManagement()
-    {
-        var cancellationToken = TestContext.Current.CancellationToken;
-        var mainBicep = await File.ReadAllTextAsync(GetRepositoryFilePath("infra", "main.bicep"), cancellationToken);
-
-        Assert.Contains("Microsoft.ApiManagement/service", mainBicep, StringComparison.Ordinal);
-        Assert.Contains("sku:", mainBicep, StringComparison.Ordinal);
-        Assert.Contains("name: 'Consumption'", mainBicep, StringComparison.Ordinal);
-        Assert.Contains("Microsoft.ApiManagement/service/apis", mainBicep, StringComparison.Ordinal);
-        Assert.Contains("Microsoft.ApiManagement/service/apis/policies", mainBicep, StringComparison.Ordinal);
-        Assert.Contains("<rate-limit", mainBicep, StringComparison.Ordinal);
-    }
-
-    [Fact]
     public async Task Infrastructure_HasLogAnalyticsBackedApplicationInsights()
     {
         var cancellationToken = TestContext.Current.CancellationToken;
