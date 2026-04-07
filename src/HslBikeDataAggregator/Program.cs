@@ -52,13 +52,13 @@ builder.Services.AddSingleton(provider =>
     }
 
     // Azure: use Managed Identity via AzureWebJobsStorage__accountName
-    var accountName = configuration["AzureWebJobsStorage__accountName"];
+    var accountName = configuration["AzureWebJobsStorage:accountName"];
     if (!string.IsNullOrWhiteSpace(accountName))
     {
         var containerUri = new Uri($"https://{accountName}.blob.core.windows.net/{BikeDataBlobNames.ContainerName}");
 
         // Use user-assigned managed identity when a client ID is configured
-        var clientId = configuration["AzureWebJobsStorage__clientId"];
+        var clientId = configuration["AzureWebJobsStorage:clientId"];
         var credential = string.IsNullOrWhiteSpace(clientId)
             ? new DefaultAzureCredential()
             : new DefaultAzureCredential(new DefaultAzureCredentialOptions { ManagedIdentityClientId = clientId });
