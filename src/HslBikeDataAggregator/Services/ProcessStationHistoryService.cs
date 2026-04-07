@@ -17,6 +17,7 @@ public sealed class ProcessStationHistoryService(
     TimeProvider timeProvider,
     ILogger<ProcessStationHistoryService> logger)
 {
+    private const string CanonicalStationIdPrefix = "smoove:";
     private readonly string tripHistoryUrlPattern = string.IsNullOrWhiteSpace(options.Value.TripHistoryUrlPattern)
         ? HistoryProcessingOptions.DefaultTripHistoryUrlPattern
         : options.Value.TripHistoryUrlPattern;
@@ -220,8 +221,8 @@ public sealed class ProcessStationHistoryService(
             return false;
         }
 
-        var departureStationId = fields[columnIndexes.DepartureStationId].Trim();
-        var arrivalStationId = fields[columnIndexes.ArrivalStationId].Trim();
+        var departureStationId = NormaliseStationId(fields[columnIndexes.DepartureStationId]);
+        var arrivalStationId = NormaliseStationId(fields[columnIndexes.ArrivalStationId]);
         if (string.IsNullOrWhiteSpace(departureStationId) || string.IsNullOrWhiteSpace(arrivalStationId))
         {
             return false;
@@ -235,6 +236,27 @@ public sealed class ProcessStationHistoryService(
 
         journey = new TripHistoryJourney(departureStationId, arrivalStationId, durationSeconds, distanceMetres);
         return true;
+    }
+
+    private static string NormaliseStationId(string stationId)
+    {
+        var trimmedStationId = stationId.Trim();
+        if (trimmedStationId.Length == 0)
+        {
+            return trimmedStationId;
+        }
+
+        if (trimmedStationId.StartsWith(CanonicalStationIdPrefix, StringComparison.OrdinalIgnoreCase))
+        {
+            var suffix = trimmedStationId[CanonicalStationIdPrefix.Length..];
+            return suffix.All(char.IsDigit)
+                ? string.Concat(CanonicalStationIdPrefix, suffix)
+                : trimmedStationId;
+        }
+
+        return trimmedStationId.All(char.IsDigit)
+            ? string.Concat(CanonicalStationIdPrefix, trimmedStationId)
+            : trimmedStationId;
     }
 
     private static string NormaliseHeader(string header)
