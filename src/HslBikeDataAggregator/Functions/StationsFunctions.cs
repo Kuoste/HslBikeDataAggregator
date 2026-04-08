@@ -13,32 +13,32 @@ public sealed class StationsFunctions(
     AggregatedBikeDataService bikeDataService,
     ILogger<StationsFunctions> logger)
 {
-    private const string LiveStationsCacheControl = "public, max-age=120";
+    private const string LiveStationsCacheControl = "public, max-age=30";
     private const string SnapshotsCacheControl = "public, max-age=900";
     private const string StationStatisticsCacheControl = "public, max-age=3600";
 
     [Function(nameof(GetStations))]
     public Task<HttpResponseData> GetStations(
-        [HttpTrigger(AuthorizationLevel.Anonymous, "get", Route = "stations")] HttpRequestData request,
+        [HttpTrigger(AuthorizationLevel.Function, "get", Route = "stations")] HttpRequestData request,
         CancellationToken cancellationToken)
         => CreateJsonResponseAsync(request, bikeDataService.GetStationsAsync(cancellationToken), LiveStationsCacheControl, cancellationToken);
 
     [Function(nameof(GetSnapshots))]
     public Task<HttpResponseData> GetSnapshots(
-        [HttpTrigger(AuthorizationLevel.Anonymous, "get", Route = "snapshots")] HttpRequestData request,
+        [HttpTrigger(AuthorizationLevel.Function, "get", Route = "snapshots")] HttpRequestData request,
         CancellationToken cancellationToken)
         => CreateJsonResponseAsync(request, bikeDataService.GetSnapshotsAsync(cancellationToken), SnapshotsCacheControl, cancellationToken);
 
     [Function(nameof(GetStationAvailability))]
     public Task<HttpResponseData> GetStationAvailability(
-        [HttpTrigger(AuthorizationLevel.Anonymous, "get", Route = "stations/{stationId}/availability")] HttpRequestData request,
+        [HttpTrigger(AuthorizationLevel.Function, "get", Route = "stations/{stationId}/availability")] HttpRequestData request,
         string stationId,
         CancellationToken cancellationToken)
         => CreateJsonResponseAsync(request, bikeDataService.GetAvailabilityAsync(stationId, cancellationToken), StationStatisticsCacheControl, cancellationToken);
 
     [Function(nameof(GetStationDestinations))]
     public Task<HttpResponseData> GetStationDestinations(
-        [HttpTrigger(AuthorizationLevel.Anonymous, "get", Route = "stations/{stationId}/destinations")] HttpRequestData request,
+        [HttpTrigger(AuthorizationLevel.Function, "get", Route = "stations/{stationId}/destinations")] HttpRequestData request,
         string stationId,
         CancellationToken cancellationToken)
         => CreateJsonResponseAsync(request, bikeDataService.GetDestinationsAsync(stationId, cancellationToken), StationStatisticsCacheControl, cancellationToken);

@@ -2,6 +2,7 @@ using './main.bicep'
 
 param environmentName = 'prod'
 param functionAppName = 'func-hsl-bike-data-aggregator-prod-flex'
+param apimServiceName = 'apim-hsl-bike-data-aggregator-prod'
 param corsAllowedOrigins = [
   'https://kuoste.github.io'
 ]

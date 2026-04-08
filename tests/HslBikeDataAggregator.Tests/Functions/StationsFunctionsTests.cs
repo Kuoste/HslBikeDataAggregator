@@ -90,7 +90,7 @@ public sealed class StationsFunctionsTests
 
         Assert.Equal(HttpStatusCode.OK, responseData.StatusCode);
         Assert.True(responseData.Headers.TryGetValues("Cache-Control", out var cacheControl));
-        Assert.Contains("public, max-age=120", cacheControl);
+        Assert.Contains("public, max-age=30", cacheControl);
 
         responseData.Body.Position = 0;
         using var reader = new StreamReader(responseData.Body);

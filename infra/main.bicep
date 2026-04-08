@@ -14,6 +14,10 @@ param location string = resourceGroup().location
 @minLength(2)
 param functionAppName string
 
+@description('Globally unique Azure API Management service name.')
+@minLength(2)
+param apimServiceName string
+
 @description('Frontend origins allowed by Azure Functions CORS configuration.')
 param corsAllowedOrigins array = [
   'https://kuoste.github.io'
@@ -276,3 +280,214 @@ output applicationInsightsName string = applicationInsights.name
 output logAnalyticsWorkspaceName string = logAnalyticsWorkspace.name
 output managedIdentityPrincipalId string = managedIdentity.properties.principalId
 output managedIdentityClientId string = managedIdentity.properties.clientId
+
+// ---------------------------------------------------------------------------
+// API Management — Consumption tier gateway
+// ---------------------------------------------------------------------------
+
+resource apimService 'Microsoft.ApiManagement/service@2024-05-01' = {
+  name: apimServiceName
+  location: location
+  sku: {
+    name: 'Consumption'
+    capacity: 0
+  }
+  properties: {
+    publisherEmail: 'noreply@${apimServiceName}.azure-api.net'
+    publisherName: 'HslBikeDataAggregator'
+  }
+  tags: {
+    'azd-env-name': environmentName
+    environment: environmentName
+    project: 'HslBikeDataAggregator'
+  }
+}
+
+// Store the auto-generated Function App host key so APIM can authenticate.
+// listKeys must target the host child resource, not the site itself.
+// The API version is derived from the functionApp resource declaration so it
+// stays in sync automatically when the resource API version is updated.
+var functionHostKey = listKeys('${functionApp.id}/host/default', functionApp.apiVersion).functionKeys.default
+
+resource apimFunctionKeyNamedValue 'Microsoft.ApiManagement/service/namedValues@2024-05-01' = {
+  name: 'function-host-key'
+  parent: apimService
+  properties: {
+    displayName: 'function-host-key'
+    value: functionHostKey
+    secret: true
+  }
+}
+
+resource apimApi 'Microsoft.ApiManagement/service/apis@2024-05-01' = {
+  name: 'hsl-bike-api'
+  parent: apimService
+  properties: {
+    displayName: 'HSL Bike Data API'
+    path: 'api'
+    protocols: [
+      'https'
+    ]
+    subscriptionRequired: false
+    serviceUrl: 'https://${functionApp.properties.defaultHostName}/api'
+  }
+}
+
+// Inbound policy applied to all operations: function key injection, CORS,
+// global rate limiting and response caching.
+// Note: Consumption tier only supports the basic rate-limit policy.
+// The quota policy is restricted to product scope and by-key variants
+// require Developer tier or above.
+resource apimApiPolicy 'Microsoft.ApiManagement/service/apis/policies@2024-05-01' = {
+  name: 'policy'
+  parent: apimApi
+  properties: {
+    format: 'xml'
+    value: '''
+<policies>
+  <inbound>
+    <base />
+    <set-header name="x-functions-key" exists-action="override">
+      <value>{{function-host-key}}</value>
+    </set-header>
+    <cors allow-credentials="false">
+      <allowed-origins>
+        <origin>https://kuoste.github.io</origin>
+      </allowed-origins>
+      <allowed-methods>
+        <method>GET</method>
+      </allowed-methods>
+      <allowed-headers>
+        <header>*</header>
+      </allowed-headers>
+    </cors>
+    <rate-limit calls="200" renewal-period="60" />
+    <cache-lookup vary-by-developer="false" vary-by-developer-groups="false" />
+  </inbound>
+  <backend>
+    <base />
+  </backend>
+  <outbound>
+    <base />
+    <cache-store duration="30" />
+  </outbound>
+  <on-error>
+    <base />
+  </on-error>
+</policies>
+'''
+  }
+  dependsOn: [
+    apimFunctionKeyNamedValue
+  ]
+}
+
+// Override cache duration for slow-changing endpoints (availability and destinations).
+resource apimAvailabilityCachePolicyFragment 'Microsoft.ApiManagement/service/apis/operations/policies@2024-05-01' = {
+  name: 'policy'
+  parent: apimGetStationAvailability
+  properties: {
+    format: 'xml'
+    value: '''
+<policies>
+  <inbound>
+    <base />
+    <cache-lookup vary-by-developer="false" vary-by-developer-groups="false" />
+  </inbound>
+  <backend>
+    <base />
+  </backend>
+  <outbound>
+    <base />
+    <cache-store duration="3600" />
+  </outbound>
+  <on-error>
+    <base />
+  </on-error>
+</policies>
+'''
+  }
+}
+
+resource apimDestinationsCachePolicyFragment 'Microsoft.ApiManagement/service/apis/operations/policies@2024-05-01' = {
+  name: 'policy'
+  parent: apimGetStationDestinations
+  properties: {
+    format: 'xml'
+    value: '''
+<policies>
+  <inbound>
+    <base />
+    <cache-lookup vary-by-developer="false" vary-by-developer-groups="false" />
+  </inbound>
+  <backend>
+    <base />
+  </backend>
+  <outbound>
+    <base />
+    <cache-store duration="3600" />
+  </outbound>
+  <on-error>
+    <base />
+  </on-error>
+</policies>
+'''
+  }
+}
+
+// API operations — one per Function App HTTP endpoint.
+resource apimGetStations 'Microsoft.ApiManagement/service/apis/operations@2024-05-01' = {
+  name: 'get-stations'
+  parent: apimApi
+  properties: {
+    displayName: 'Get stations'
+    method: 'GET'
+    urlTemplate: '/stations'
+  }
+}
+
+resource apimGetSnapshots 'Microsoft.ApiManagement/service/apis/operations@2024-05-01' = {
+  name: 'get-snapshots'
+  parent: apimApi
+  properties: {
+    displayName: 'Get snapshots'
+    method: 'GET'
+    urlTemplate: '/snapshots'
+  }
+}
+
+resource apimGetStationAvailability 'Microsoft.ApiManagement/service/apis/operations@2024-05-01' = {
+  name: 'get-station-availability'
+  parent: apimApi
+  properties: {
+    displayName: 'Get station availability'
+    method: 'GET'
+    urlTemplate: '/stations/{stationId}/availability'
+    templateParameters: [
+      {
+        name: 'stationId'
+        required: true
+        type: 'string'
+      }
+    ]
+  }
+}
+
+resource apimGetStationDestinations 'Microsoft.ApiManagement/service/apis/operations@2024-05-01' = {
+  name: 'get-station-destinations'
+  parent: apimApi
+  properties: {
+    displayName: 'Get station destinations'
+    method: 'GET'
+    urlTemplate: '/stations/{stationId}/destinations'
+    templateParameters: [
+      {
+        name: 'stationId'
+        required: true
+        type: 'string'
+      }
+    ]
+  }
+}
+
+output apimGatewayUrl string = apimService.properties.gatewayUrl

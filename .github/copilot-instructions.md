@@ -7,7 +7,7 @@ Helsinki city bike data backend. Part of a two-repo system:
 | Repo | Role | Tech | Hosting |
 |---|---|---|---|
 | **HslBikeApp** | Blazor WASM frontend | .NET 10, Blazor WebAssembly, Leaflet.js | GitHub Pages |
-| **HslBikeDataAggregator** (this repo) | C# backend service | .NET 10, Azure Functions (isolated worker) | Azure Functions (Consumption) |
+| **HslBikeDataAggregator** (this repo) | C# backend service | .NET 10, Azure Functions (isolated worker), Azure API Management | Azure Functions (Flex Consumption) |
 
 ## Architecture
 
@@ -28,6 +28,13 @@ This service is the **only component** that holds the HSL Digitransit API key. T
 - Azure Blob Storage for aggregated data (snapshots, hourly profiles, destination data).
 - Data format: JSON blobs, one per station for availability profiles.
 
+### API Gateway
+
+- Azure API Management (Consumption tier) sits in front of all HTTP endpoints.
+- APIM enforces global rate limiting (200 req/min) and response caching. Consumption tier does not support per-IP by-key policies, and the quota policy is restricted to product scope.
+- APIM injects the Function App host key — HTTP functions use `AuthorizationLevel.Function`, so direct calls without the key are rejected.
+- The Blazor frontend calls the APIM gateway URL, never the Function App URL directly.
+
 ## API Contract
 
 - `GET /api/stations` — current bike availability for all stations
@@ -35,7 +42,7 @@ This service is the **only component** that holds the HSL Digitransit API key. T
 - `GET /api/stations/{id}/destinations` — top destinations by trip count
 - `GET /api/snapshots` — last N snapshots for trend arrows
 
-All endpoints return JSON. CORS enabled for `https://kuoste.github.io`.
+All endpoints return JSON. Requests are routed through the APIM gateway, which handles CORS, rate limiting, and function key injection. Direct calls to the Function App require a valid function key.
 
 ## Secrets
 
@@ -72,4 +79,9 @@ All endpoints return JSON. CORS enabled for `https://kuoste.github.io`.
 
 - Use British English consistently in responses, code comments, documentation, commit and pull request text, and GitHub content.
 - Avoid non-English or stray foreign text in responses.
+
+## Domain Logic Considerations
+
+- Station stock changes are influenced not only by rider journeys but also by bike rebalancing vans that move bikes from full stations to empty ones. 
+- Treat snapshot-based flow metrics separately from trip-history demand metrics to ensure accurate data representation.
 

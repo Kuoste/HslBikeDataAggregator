@@ -277,6 +277,87 @@ public sealed class DeploymentWorkflowConfigurationTests
         Assert.Contains("package-ecosystem: github-actions", dependabotYaml, StringComparison.Ordinal);
     }
 
+    [Fact]
+    public async Task Infrastructure_ProvisionApimConsumptionInstance()
+    {
+        var cancellationToken = TestContext.Current.CancellationToken;
+        var mainBicep = await File.ReadAllTextAsync(GetRepositoryFilePath("infra", "main.bicep"), cancellationToken);
+
+        Assert.Contains("Microsoft.ApiManagement/service", mainBicep, StringComparison.Ordinal);
+        Assert.Contains("name: 'Consumption'", mainBicep, StringComparison.Ordinal);
+        Assert.Contains("param apimServiceName string", mainBicep, StringComparison.Ordinal);
+    }
+
+    [Fact]
+    public async Task Infrastructure_ApimImportsFunctionAppEndpoints()
+    {
+        var cancellationToken = TestContext.Current.CancellationToken;
+        var mainBicep = await File.ReadAllTextAsync(GetRepositoryFilePath("infra", "main.bicep"), cancellationToken);
+
+        Assert.Contains("Microsoft.ApiManagement/service/apis", mainBicep, StringComparison.Ordinal);
+        Assert.Contains("Microsoft.ApiManagement/service/apis/operations", mainBicep, StringComparison.Ordinal);
+        Assert.Contains("/stations", mainBicep, StringComparison.Ordinal);
+        Assert.Contains("/snapshots", mainBicep, StringComparison.Ordinal);
+        Assert.Contains("/stations/{stationId}/availability", mainBicep, StringComparison.Ordinal);
+        Assert.Contains("/stations/{stationId}/destinations", mainBicep, StringComparison.Ordinal);
+    }
+
+    [Fact]
+    public async Task Infrastructure_ApimInjectsFunctionHostKey()
+    {
+        var cancellationToken = TestContext.Current.CancellationToken;
+        var mainBicep = await File.ReadAllTextAsync(GetRepositoryFilePath("infra", "main.bicep"), cancellationToken);
+
+        Assert.Contains("listKeys('${functionApp.id}/host/default'", mainBicep, StringComparison.Ordinal);
+        Assert.Contains("function-host-key", mainBicep, StringComparison.Ordinal);
+        Assert.Contains("x-functions-key", mainBicep, StringComparison.Ordinal);
+    }
+
+    [Fact]
+    public async Task Infrastructure_ApimConfiguresRateLimiting()
+    {
+        var cancellationToken = TestContext.Current.CancellationToken;
+        var mainBicep = await File.ReadAllTextAsync(GetRepositoryFilePath("infra", "main.bicep"), cancellationToken);
+
+        Assert.Contains("rate-limit calls=", mainBicep, StringComparison.Ordinal);
+        Assert.DoesNotContain("rate-limit-by-key", mainBicep, StringComparison.Ordinal);
+        Assert.DoesNotContain("<quota", mainBicep, StringComparison.Ordinal);
+    }
+
+    [Fact]
+    public async Task Infrastructure_ApimConfiguresResponseCaching()
+    {
+        var cancellationToken = TestContext.Current.CancellationToken;
+        var mainBicep = await File.ReadAllTextAsync(GetRepositoryFilePath("infra", "main.bicep"), cancellationToken);
+
+        Assert.Contains("cache-lookup", mainBicep, StringComparison.Ordinal);
+        Assert.Contains("cache-store", mainBicep, StringComparison.Ordinal);
+    }
+
+    [Fact]
+    public async Task Infrastructure_OutputsApimGatewayUrl()
+    {
+        var cancellationToken = TestContext.Current.CancellationToken;
+        var mainBicep = await File.ReadAllTextAsync(GetRepositoryFilePath("infra", "main.bicep"), cancellationToken);
+
+        Assert.Contains("output apimGatewayUrl string", mainBicep, StringComparison.Ordinal);
+    }
+
+    [Fact]
+    public async Task InfrastructureParameters_ContainApimServiceNames()
+    {
+        var cancellationToken = TestContext.Current.CancellationToken;
+        var devJson = await File.ReadAllTextAsync(GetRepositoryFilePath("infra", "dev.json"), cancellationToken);
+        var prodJson = await File.ReadAllTextAsync(GetRepositoryFilePath("infra", "prod.json"), cancellationToken);
+        var devBicepParameters = await File.ReadAllTextAsync(GetRepositoryFilePath("infra", "dev.bicepparam"), cancellationToken);
+        var prodBicepParameters = await File.ReadAllTextAsync(GetRepositoryFilePath("infra", "prod.bicepparam"), cancellationToken);
+
+        Assert.Contains("apim-hsl-bike-data-aggregator-dev", devJson, StringComparison.Ordinal);
+        Assert.Contains("apim-hsl-bike-data-aggregator-prod", prodJson, StringComparison.Ordinal);
+        Assert.Contains("apim-hsl-bike-data-aggregator-dev", devBicepParameters, StringComparison.Ordinal);
+        Assert.Contains("apim-hsl-bike-data-aggregator-prod", prodBicepParameters, StringComparison.Ordinal);
+    }
+
     private static string GetRepositoryFilePath(params string[] parts)
     {
         var repositoryRoot = Path.GetFullPath(Path.Combine(AppContext.BaseDirectory, "..", "..", "..", "..", ".."));

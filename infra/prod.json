@@ -8,6 +8,9 @@
     "functionAppName": {
       "value": "func-hsl-bike-data-aggregator-prod-flex"
     },
+    "apimServiceName": {
+      "value": "apim-hsl-bike-data-aggregator-prod"
+    },
     "corsAllowedOrigins": {
       "value": [
         "https://kuoste.github.io"

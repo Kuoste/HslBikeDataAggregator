@@ -48,6 +48,7 @@ Ready for Validation
 - One Application Insights resource per environment
 - One Azure Functions hosting plan per environment
 - One Azure Function App per environment
+- One Azure API Management Consumption instance per environment (rate limiting, response caching, function key injection)
 - App settings applied from IaC where appropriate
 - Sensitive settings supplied from GitHub environment secrets at deployment time
 

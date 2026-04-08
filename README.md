@@ -9,6 +9,7 @@ This service is the only component that holds the HSL Digitransit API key. It po
 - **Runtime:** Azure Functions v4, isolated worker model
 - **Language:** C# / .NET 10
 - **Storage:** Azure Blob Storage
+- **API gateway:** Azure API Management (Consumption tier)
 - **Frontend consumer:** [`HslBikeApp`](https://github.com/Kuoste/HslBikeApp)
 
 ### Write/read separation
@@ -26,7 +27,7 @@ A timer-triggered function polls HSL every few minutes and writes JSON blobs to 
 | `GetStationAvailability` | HTTP GET | `/api/stations/{id}/availability` | Return hourly availability profile (24 buckets) |
 | `GetStationDestinations` | HTTP GET | `/api/stations/{id}/destinations` | Return popular destinations for a station |
 
-All HTTP endpoints return JSON. CORS is enabled for `https://kuoste.github.io`.
+All HTTP endpoints return JSON. Requests are routed through Azure API Management, which enforces rate limiting, response caching, and injects the function host key. Direct calls to the Function App require a valid function key.
 
 ## API response shapes
 
@@ -141,6 +142,18 @@ The template provisions:
 - Azure Function App (configured with identity-managed connections)
 - Storage account (with Blob Data Owner RBAC for functions)
 - Application Insights
+- Azure API Management Consumption instance (rate limiting, response caching, function key injection)
+
+### Resource provider prerequisites
+
+Before the first deployment, ensure the required resource providers are registered on the target subscription:
+
+```bash
+az provider register --namespace Microsoft.ApiManagement --wait
+az provider show --namespace Microsoft.ApiManagement --query registrationState -o tsv
+```
+
+Registration is a one-time operation per subscription. Deployment will fail with a "subscription is not registered" error if this step is skipped.
 
 ### GitHub environments
 

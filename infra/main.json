@@ -5,7 +5,7 @@
     "_generator": {
       "name": "bicep",
       "version": "0.42.1.51946",
-      "templateHash": "4728501537445535075"
+      "templateHash": "16814742694696426696"
     }
   },
   "parameters": {
@@ -33,16 +33,25 @@
         "description": "Globally unique Azure Function App name."
       }
     },
-    "corsAllowedOrigin": {
+    "apimServiceName": {
       "type": "string",
-      "defaultValue": "https://kuoste.github.io",
+      "minLength": 2,
       "metadata": {
-        "description": "Frontend origin allowed by Azure Functions CORS configuration."
+        "description": "Globally unique Azure API Management service name."
+      }
+    },
+    "corsAllowedOrigins": {
+      "type": "array",
+      "defaultValue": [
+        "https://kuoste.github.io"
+      ],
+      "metadata": {
+        "description": "Frontend origins allowed by Azure Functions CORS configuration."
       }
     },
     "pollIntervalCron": {
       "type": "string",
-      "defaultValue": "0 */5 * * * *",
+      "defaultValue": "0 */15 * * * *",
       "metadata": {
         "description": "Cron expression used by the PollStations timer trigger."
       }
@@ -54,15 +63,38 @@
       "metadata": {
         "description": "Number of snapshots retained in blob storage."
       }
+    },
+    "historyProcessingCron": {
+      "type": "string",
+      "defaultValue": "0 0 2 * * *",
+      "metadata": {
+        "description": "Cron expression used by the ProcessStationHistory timer trigger."
+      }
     }
   },
   "variables": {
+    "managedIdentityName": "[format('{0}-id', parameters('functionAppName'))]",
     "appServicePlanName": "[format('{0}-plan', parameters('functionAppName'))]",
     "applicationInsightsName": "[format('{0}-appi', parameters('functionAppName'))]",
+    "logAnalyticsWorkspaceName": "[format('{0}-law', parameters('functionAppName'))]",
     "storageAccountName": "[take(format('st{0}{1}', toLower(replace(replace(parameters('functionAppName'), '-', ''), '_', '')), uniqueString(resourceGroup().id)), 24)]",
-    "contentShareName": "[take(toLower(format('{0}{1}', replace(replace(parameters('functionAppName'), '-', ''), '_', ''), uniqueString(parameters('functionAppName')))), 63)]"
+    "deploymentStorageContainerName": "deployment-packages",
+    "deploymentStorageContainerUrl": "[format('https://{0}.blob.{1}/{2}', variables('storageAccountName'), environment().suffixes.storage, variables('deploymentStorageContainerName'))]",
+    "storageBlobDataOwnerRoleId": "b7e6dc6d-f1e8-4753-8033-0f276bb0955b",
+    "storageQueueDataContributorRoleId": "974c5e8b-45b9-4653-ba55-5f855dd0fb88"
   },
   "resources": [
+    {
+      "type": "Microsoft.ManagedIdentity/userAssignedIdentities",
+      "apiVersion": "2023-01-31",
+      "name": "[variables('managedIdentityName')]",
+      "location": "[parameters('location')]",
+      "tags": {
+        "azd-env-name": "[parameters('environmentName')]",
+        "environment": "[parameters('environmentName')]",
+        "project": "HslBikeDataAggregator"
+      }
+    },
     {
       "type": "Microsoft.Storage/storageAccounts",
       "apiVersion": "2023-05-01",
@@ -75,9 +107,27 @@
       "properties": {
         "accessTier": "Hot",
         "allowBlobPublicAccess": false,
-        "allowSharedKeyAccess": true,
+        "allowSharedKeyAccess": false,
+        "defaultToOAuthAuthentication": true,
         "minimumTlsVersion": "TLS1_2",
         "supportsHttpsTrafficOnly": true
+      },
+      "tags": {
+        "azd-env-name": "[parameters('environmentName')]",
+        "environment": "[parameters('environmentName')]",
+        "project": "HslBikeDataAggregator"
+      }
+    },
+    {
+      "type": "Microsoft.OperationalInsights/workspaces",
+      "apiVersion": "2023-09-01",
+      "name": "[variables('logAnalyticsWorkspaceName')]",
+      "location": "[parameters('location')]",
+      "properties": {
+        "sku": {
+          "name": "PerGB2018"
+        },
+        "retentionInDays": 30
       },
       "tags": {
         "azd-env-name": "[parameters('environmentName')]",
@@ -94,26 +144,49 @@
       "properties": {
         "Application_Type": "web",
         "Flow_Type": "Bluefield",
-        "Request_Source": "rest"
+        "Request_Source": "rest",
+        "WorkspaceResourceId": "[resourceId('Microsoft.OperationalInsights/workspaces', variables('logAnalyticsWorkspaceName'))]"
       },
       "tags": {
         "azd-env-name": "[parameters('environmentName')]",
         "environment": "[parameters('environmentName')]",
         "project": "HslBikeDataAggregator"
-      }
+      },
+      "dependsOn": [
+        "[resourceId('Microsoft.OperationalInsights/workspaces', variables('logAnalyticsWorkspaceName'))]"
+      ]
+    },
+    {
+      "type": "Microsoft.Storage/storageAccounts/blobServices",
+      "apiVersion": "2023-05-01",
+      "name": "[format('{0}/{1}', variables('storageAccountName'), 'default')]",
+      "dependsOn": [
+        "[resourceId('Microsoft.Storage/storageAccounts', variables('storageAccountName'))]"
+      ]
+    },
+    {
+      "type": "Microsoft.Storage/storageAccounts/blobServices/containers",
+      "apiVersion": "2023-05-01",
+      "name": "[format('{0}/{1}/{2}', variables('storageAccountName'), 'default', variables('deploymentStorageContainerName'))]",
+      "properties": {
+        "publicAccess": "None"
+      },
+      "dependsOn": [
+        "[resourceId('Microsoft.Storage/storageAccounts/blobServices', variables('storageAccountName'), 'default')]"
+      ]
     },
     {
       "type": "Microsoft.Web/serverfarms",
-      "apiVersion": "2023-12-01",
+      "apiVersion": "2024-04-01",
       "name": "[variables('appServicePlanName')]",
       "location": "[parameters('location')]",
       "kind": "functionapp",
       "sku": {
-        "name": "Y1",
-        "tier": "Dynamic"
+        "name": "FC1",
+        "tier": "FlexConsumption"
       },
       "properties": {
-        "reserved": false
+        "reserved": true
       },
       "tags": {
         "azd-env-name": "[parameters('environmentName')]",
@@ -123,17 +196,40 @@
     },
     {
       "type": "Microsoft.Web/sites",
-      "apiVersion": "2023-12-01",
+      "apiVersion": "2024-04-01",
       "name": "[parameters('functionAppName')]",
       "location": "[parameters('location')]",
-      "kind": "functionapp",
+      "kind": "functionapp,linux",
       "identity": {
-        "type": "SystemAssigned"
+        "type": "UserAssigned",
+        "userAssignedIdentities": {
+          "[format('{0}', resourceId('Microsoft.ManagedIdentity/userAssignedIdentities', variables('managedIdentityName')))]": {}
+        }
       },
       "properties": {
         "serverFarmId": "[resourceId('Microsoft.Web/serverfarms', variables('appServicePlanName'))]",
         "httpsOnly": true,
         "clientAffinityEnabled": false,
+        "functionAppConfig": {
+          "deployment": {
+            "storage": {
+              "type": "blobContainer",
+              "value": "[variables('deploymentStorageContainerUrl')]",
+              "authentication": {
+                "type": "UserAssignedIdentity",
+                "userAssignedIdentityResourceId": "[resourceId('Microsoft.ManagedIdentity/userAssignedIdentities', variables('managedIdentityName'))]"
+              }
+            }
+          },
+          "runtime": {
+            "name": "dotnet-isolated",
+            "version": "10.0"
+          },
+          "scaleAndConcurrency": {
+            "maximumInstanceCount": 100,
+            "instanceMemoryMB": 512
+          }
+        },
         "siteConfig": {
           "alwaysOn": false,
           "appSettings": [
@@ -142,16 +238,16 @@
               "value": "[reference(resourceId('Microsoft.Insights/components', variables('applicationInsightsName')), '2020-02-02').ConnectionString]"
             },
             {
-              "name": "AzureWebJobsStorage",
-              "value": "[format('DefaultEndpointsProtocol=https;AccountName={0};EndpointSuffix={1};AccountKey={2}', variables('storageAccountName'), environment().suffixes.storage, listKeys(resourceId('Microsoft.Storage/storageAccounts', variables('storageAccountName')), '2023-05-01').keys[0].value)]"
+              "name": "AzureWebJobsStorage__accountName",
+              "value": "[variables('storageAccountName')]"
             },
             {
-              "name": "FUNCTIONS_EXTENSION_VERSION",
-              "value": "~4"
+              "name": "AzureWebJobsStorage__clientId",
+              "value": "[reference(resourceId('Microsoft.ManagedIdentity/userAssignedIdentities', variables('managedIdentityName')), '2023-01-31').clientId]"
             },
             {
-              "name": "FUNCTIONS_WORKER_RUNTIME",
-              "value": "dotnet-isolated"
+              "name": "AzureWebJobsStorage__credential",
+              "value": "managedidentity"
             },
             {
               "name": "PollIntervalCron",
@@ -162,22 +258,12 @@
               "value": "[string(parameters('snapshotHistoryLimit'))]"
             },
             {
-              "name": "WEBSITE_CONTENTAZUREFILECONNECTIONSTRING",
-              "value": "[format('DefaultEndpointsProtocol=https;AccountName={0};EndpointSuffix={1};AccountKey={2}', variables('storageAccountName'), environment().suffixes.storage, listKeys(resourceId('Microsoft.Storage/storageAccounts', variables('storageAccountName')), '2023-05-01').keys[0].value)]"
-            },
-            {
-              "name": "WEBSITE_CONTENTSHARE",
-              "value": "[variables('contentShareName')]"
-            },
-            {
-              "name": "WEBSITE_RUN_FROM_PACKAGE",
-              "value": "1"
+              "name": "HistoryProcessingCron",
+              "value": "[parameters('historyProcessingCron')]"
             }
           ],
           "cors": {
-            "allowedOrigins": [
-              "[parameters('corsAllowedOrigin')]"
-            ],
+            "allowedOrigins": "[parameters('corsAllowedOrigins')]",
             "supportCredentials": false
           },
           "ftpsState": "Disabled",
@@ -193,7 +279,225 @@
       "dependsOn": [
         "[resourceId('Microsoft.Insights/components', variables('applicationInsightsName'))]",
         "[resourceId('Microsoft.Web/serverfarms', variables('appServicePlanName'))]",
+        "[resourceId('Microsoft.ManagedIdentity/userAssignedIdentities', variables('managedIdentityName'))]",
         "[resourceId('Microsoft.Storage/storageAccounts', variables('storageAccountName'))]"
+      ]
+    },
+    {
+      "type": "Microsoft.Authorization/roleAssignments",
+      "apiVersion": "2022-04-01",
+      "scope": "[resourceId('Microsoft.Storage/storageAccounts', variables('storageAccountName'))]",
+      "name": "[guid(resourceId('Microsoft.Storage/storageAccounts', variables('storageAccountName')), resourceId('Microsoft.ManagedIdentity/userAssignedIdentities', variables('managedIdentityName')), variables('storageBlobDataOwnerRoleId'))]",
+      "properties": {
+        "roleDefinitionId": "[subscriptionResourceId('Microsoft.Authorization/roleDefinitions', variables('storageBlobDataOwnerRoleId'))]",
+        "principalId": "[reference(resourceId('Microsoft.ManagedIdentity/userAssignedIdentities', variables('managedIdentityName')), '2023-01-31').principalId]",
+        "principalType": "ServicePrincipal"
+      },
+      "dependsOn": [
+        "[resourceId('Microsoft.ManagedIdentity/userAssignedIdentities', variables('managedIdentityName'))]",
+        "[resourceId('Microsoft.Storage/storageAccounts', variables('storageAccountName'))]"
+      ]
+    },
+    {
+      "type": "Microsoft.Authorization/roleAssignments",
+      "apiVersion": "2022-04-01",
+      "scope": "[resourceId('Microsoft.Storage/storageAccounts', variables('storageAccountName'))]",
+      "name": "[guid(resourceId('Microsoft.Storage/storageAccounts', variables('storageAccountName')), resourceId('Microsoft.ManagedIdentity/userAssignedIdentities', variables('managedIdentityName')), variables('storageQueueDataContributorRoleId'))]",
+      "properties": {
+        "roleDefinitionId": "[subscriptionResourceId('Microsoft.Authorization/roleDefinitions', variables('storageQueueDataContributorRoleId'))]",
+        "principalId": "[reference(resourceId('Microsoft.ManagedIdentity/userAssignedIdentities', variables('managedIdentityName')), '2023-01-31').principalId]",
+        "principalType": "ServicePrincipal"
+      },
+      "dependsOn": [
+        "[resourceId('Microsoft.ManagedIdentity/userAssignedIdentities', variables('managedIdentityName'))]",
+        "[resourceId('Microsoft.Storage/storageAccounts', variables('storageAccountName'))]"
+      ]
+    },
+    {
+      "type": "Microsoft.Insights/diagnosticSettings",
+      "apiVersion": "2021-05-01-preview",
+      "scope": "[resourceId('Microsoft.Storage/storageAccounts/blobServices', variables('storageAccountName'), 'default')]",
+      "name": "[format('{0}-blob-logs', variables('storageAccountName'))]",
+      "properties": {
+        "workspaceId": "[resourceId('Microsoft.OperationalInsights/workspaces', variables('logAnalyticsWorkspaceName'))]",
+        "logs": [
+          {
+            "category": "StorageWrite",
+            "enabled": true
+          },
+          {
+            "category": "StorageRead",
+            "enabled": true
+          },
+          {
+            "category": "StorageDelete",
+            "enabled": true
+          }
+        ],
+        "metrics": [
+          {
+            "category": "Transaction",
+            "enabled": true
+          }
+        ]
+      },
+      "dependsOn": [
+        "[resourceId('Microsoft.Storage/storageAccounts/blobServices', variables('storageAccountName'), 'default')]",
+        "[resourceId('Microsoft.OperationalInsights/workspaces', variables('logAnalyticsWorkspaceName'))]"
+      ]
+    },
+    {
+      "type": "Microsoft.ApiManagement/service",
+      "apiVersion": "2024-05-01",
+      "name": "[parameters('apimServiceName')]",
+      "location": "[parameters('location')]",
+      "sku": {
+        "name": "Consumption",
+        "capacity": 0
+      },
+      "properties": {
+        "publisherEmail": "[format('noreply@{0}.azure-api.net', parameters('apimServiceName'))]",
+        "publisherName": "HslBikeDataAggregator"
+      },
+      "tags": {
+        "azd-env-name": "[parameters('environmentName')]",
+        "environment": "[parameters('environmentName')]",
+        "project": "HslBikeDataAggregator"
+      }
+    },
+    {
+      "type": "Microsoft.ApiManagement/service/namedValues",
+      "apiVersion": "2024-05-01",
+      "name": "[format('{0}/{1}', parameters('apimServiceName'), 'function-host-key')]",
+      "properties": {
+        "displayName": "function-host-key",
+        "value": "[listKeys(format('{0}/host/default', resourceId('Microsoft.Web/sites', parameters('functionAppName'))), '2024-04-01').functionKeys.default]",
+        "secret": true
+      },
+      "dependsOn": [
+        "[resourceId('Microsoft.ApiManagement/service', parameters('apimServiceName'))]",
+        "[resourceId('Microsoft.Web/sites', parameters('functionAppName'))]"
+      ]
+    },
+    {
+      "type": "Microsoft.ApiManagement/service/apis",
+      "apiVersion": "2024-05-01",
+      "name": "[format('{0}/{1}', parameters('apimServiceName'), 'hsl-bike-api')]",
+      "properties": {
+        "displayName": "HSL Bike Data API",
+        "path": "api",
+        "protocols": [
+          "https"
+        ],
+        "subscriptionRequired": false,
+        "serviceUrl": "[format('https://{0}/api', reference(resourceId('Microsoft.Web/sites', parameters('functionAppName')), '2024-04-01').defaultHostName)]"
+      },
+      "dependsOn": [
+        "[resourceId('Microsoft.ApiManagement/service', parameters('apimServiceName'))]",
+        "[resourceId('Microsoft.Web/sites', parameters('functionAppName'))]"
+      ]
+    },
+    {
+      "type": "Microsoft.ApiManagement/service/apis/policies",
+      "apiVersion": "2024-05-01",
+      "name": "[format('{0}/{1}/{2}', parameters('apimServiceName'), 'hsl-bike-api', 'policy')]",
+      "properties": {
+        "format": "xml",
+        "value": "<policies>\r\n  <inbound>\r\n    <base />\r\n    <set-header name=\"x-functions-key\" exists-action=\"override\">\r\n      <value>{{function-host-key}}</value>\r\n    </set-header>\r\n    <cors allow-credentials=\"false\">\r\n      <allowed-origins>\r\n        <origin>https://kuoste.github.io</origin>\r\n      </allowed-origins>\r\n      <allowed-methods>\r\n        <method>GET</method>\r\n      </allowed-methods>\r\n      <allowed-headers>\r\n        <header>*</header>\r\n      </allowed-headers>\r\n    </cors>\r\n    <rate-limit calls=\"200\" renewal-period=\"60\" />\r\n    <cache-lookup vary-by-developer=\"false\" vary-by-developer-groups=\"false\" />\r\n  </inbound>\r\n  <backend>\r\n    <base />\r\n  </backend>\r\n  <outbound>\r\n    <base />\r\n    <cache-store duration=\"30\" />\r\n  </outbound>\r\n  <on-error>\r\n    <base />\r\n  </on-error>\r\n</policies>\r\n"
+      },
+      "dependsOn": [
+        "[resourceId('Microsoft.ApiManagement/service/apis', parameters('apimServiceName'), 'hsl-bike-api')]",
+        "[resourceId('Microsoft.ApiManagement/service/namedValues', parameters('apimServiceName'), 'function-host-key')]"
+      ]
+    },
+    {
+      "type": "Microsoft.ApiManagement/service/apis/operations/policies",
+      "apiVersion": "2024-05-01",
+      "name": "[format('{0}/{1}/{2}/{3}', parameters('apimServiceName'), 'hsl-bike-api', 'get-station-availability', 'policy')]",
+      "properties": {
+        "format": "xml",
+        "value": "<policies>\r\n  <inbound>\r\n    <base />\r\n    <cache-lookup vary-by-developer=\"false\" vary-by-developer-groups=\"false\" />\r\n  </inbound>\r\n  <backend>\r\n    <base />\r\n  </backend>\r\n  <outbound>\r\n    <base />\r\n    <cache-store duration=\"3600\" />\r\n  </outbound>\r\n  <on-error>\r\n    <base />\r\n  </on-error>\r\n</policies>\r\n"
+      },
+      "dependsOn": [
+        "[resourceId('Microsoft.ApiManagement/service/apis/operations', parameters('apimServiceName'), 'hsl-bike-api', 'get-station-availability')]"
+      ]
+    },
+    {
+      "type": "Microsoft.ApiManagement/service/apis/operations/policies",
+      "apiVersion": "2024-05-01",
+      "name": "[format('{0}/{1}/{2}/{3}', parameters('apimServiceName'), 'hsl-bike-api', 'get-station-destinations', 'policy')]",
+      "properties": {
+        "format": "xml",
+        "value": "<policies>\r\n  <inbound>\r\n    <base />\r\n    <cache-lookup vary-by-developer=\"false\" vary-by-developer-groups=\"false\" />\r\n  </inbound>\r\n  <backend>\r\n    <base />\r\n  </backend>\r\n  <outbound>\r\n    <base />\r\n    <cache-store duration=\"3600\" />\r\n  </outbound>\r\n  <on-error>\r\n    <base />\r\n  </on-error>\r\n</policies>\r\n"
+      },
+      "dependsOn": [
+        "[resourceId('Microsoft.ApiManagement/service/apis/operations', parameters('apimServiceName'), 'hsl-bike-api', 'get-station-destinations')]"
+      ]
+    },
+    {
+      "type": "Microsoft.ApiManagement/service/apis/operations",
+      "apiVersion": "2024-05-01",
+      "name": "[format('{0}/{1}/{2}', parameters('apimServiceName'), 'hsl-bike-api', 'get-stations')]",
+      "properties": {
+        "displayName": "Get stations",
+        "method": "GET",
+        "urlTemplate": "/stations"
+      },
+      "dependsOn": [
+        "[resourceId('Microsoft.ApiManagement/service/apis', parameters('apimServiceName'), 'hsl-bike-api')]"
+      ]
+    },
+    {
+      "type": "Microsoft.ApiManagement/service/apis/operations",
+      "apiVersion": "2024-05-01",
+      "name": "[format('{0}/{1}/{2}', parameters('apimServiceName'), 'hsl-bike-api', 'get-snapshots')]",
+      "properties": {
+        "displayName": "Get snapshots",
+        "method": "GET",
+        "urlTemplate": "/snapshots"
+      },
+      "dependsOn": [
+        "[resourceId('Microsoft.ApiManagement/service/apis', parameters('apimServiceName'), 'hsl-bike-api')]"
+      ]
+    },
+    {
+      "type": "Microsoft.ApiManagement/service/apis/operations",
+      "apiVersion": "2024-05-01",
+      "name": "[format('{0}/{1}/{2}', parameters('apimServiceName'), 'hsl-bike-api', 'get-station-availability')]",
+      "properties": {
+        "displayName": "Get station availability",
+        "method": "GET",
+        "urlTemplate": "/stations/{stationId}/availability",
+        "templateParameters": [
+          {
+            "name": "stationId",
+            "required": true,
+            "type": "string"
+          }
+        ]
+      },
+      "dependsOn": [
+        "[resourceId('Microsoft.ApiManagement/service/apis', parameters('apimServiceName'), 'hsl-bike-api')]"
+      ]
+    },
+    {
+      "type": "Microsoft.ApiManagement/service/apis/operations",
+      "apiVersion": "2024-05-01",
+      "name": "[format('{0}/{1}/{2}', parameters('apimServiceName'), 'hsl-bike-api', 'get-station-destinations')]",
+      "properties": {
+        "displayName": "Get station destinations",
+        "method": "GET",
+        "urlTemplate": "/stations/{stationId}/destinations",
+        "templateParameters": [
+          {
+            "name": "stationId",
+            "required": true,
+            "type": "string"
+          }
+        ]
+      },
+      "dependsOn": [
+        "[resourceId('Microsoft.ApiManagement/service/apis', parameters('apimServiceName'), 'hsl-bike-api')]"
       ]
     }
   ],
@@ -204,7 +508,7 @@
     },
     "functionHostname": {
       "type": "string",
-      "value": "[format('https://{0}', reference(resourceId('Microsoft.Web/sites', parameters('functionAppName')), '2023-12-01').defaultHostName)]"
+      "value": "[format('https://{0}', reference(resourceId('Microsoft.Web/sites', parameters('functionAppName')), '2024-04-01').defaultHostName)]"
     },
     "storageAccountName": {
       "type": "string",
@@ -214,9 +518,21 @@
       "type": "string",
       "value": "[variables('applicationInsightsName')]"
     },
+    "logAnalyticsWorkspaceName": {
+      "type": "string",
+      "value": "[variables('logAnalyticsWorkspaceName')]"
+    },
     "managedIdentityPrincipalId": {
       "type": "string",
-      "value": "[reference(resourceId('Microsoft.Web/sites', parameters('functionAppName')), '2023-12-01', 'full').identity.principalId]"
+      "value": "[reference(resourceId('Microsoft.ManagedIdentity/userAssignedIdentities', variables('managedIdentityName')), '2023-01-31').principalId]"
+    },
+    "managedIdentityClientId": {
+      "type": "string",
+      "value": "[reference(resourceId('Microsoft.ManagedIdentity/userAssignedIdentities', variables('managedIdentityName')), '2023-01-31').clientId]"
+    },
+    "apimGatewayUrl": {
+      "type": "string",
+      "value": "[reference(resourceId('Microsoft.ApiManagement/service', parameters('apimServiceName')), '2024-05-01').gatewayUrl]"
     }
   }
 }
