@@ -5,7 +5,7 @@
     "_generator": {
       "name": "bicep",
       "version": "0.42.1.51946",
-      "templateHash": "8435272939348383580"
+      "templateHash": "11649082498800915839"
     }
   },
   "parameters": {
@@ -357,7 +357,8 @@
       },
       "properties": {
         "publisherEmail": "[format('noreply@{0}.azure-api.net', parameters('apimServiceName'))]",
-        "publisherName": "HslBikeDataAggregator"
+        "publisherName": "HslBikeDataAggregator",
+        "restore": true
       },
       "tags": {
         "azd-env-name": "[parameters('environmentName')]",
