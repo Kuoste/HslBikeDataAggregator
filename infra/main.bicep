@@ -295,7 +295,6 @@ resource apimService 'Microsoft.ApiManagement/service@2024-05-01' = {
   properties: {
     publisherEmail: 'noreply@${apimServiceName}.azure-api.net'
     publisherName: 'HslBikeDataAggregator'
-    restore: true
   }
   tags: {
     'azd-env-name': environmentName

@@ -23,6 +23,7 @@ jobs:
       AZURE_LOCATION: ${{ vars.AZURE_LOCATION }}
       AZURE_RESOURCE_GROUP: ${{ vars.AZURE_RESOURCE_GROUP || 'rg-hsl-bike-data-aggregator-dev' }}
       AZURE_FUNCTION_APP_NAME: ${{ vars.AZURE_FUNCTION_APP_NAME || 'func-hsl-bike-data-aggregator-dev-flex' }}
+      AZURE_APIM_SERVICE_NAME: ${{ vars.AZURE_APIM_SERVICE_NAME || 'apim-hsl-bike-data-aggregator-dev' }}
 
     steps:
       - name: Check out repository
@@ -62,6 +63,22 @@ jobs:
             az group create \
               --name "$AZURE_RESOURCE_GROUP" \
               --location "$AZURE_LOCATION"
+
+      - name: Purge soft-deleted APIM instance if lingering
+        uses: azure/cli@9eb25b8360668fb0ecbafa808d40e2197b2f5f52 # v3.0.0
+        with:
+          inlineScript: |
+            if az apim deletedservice show \
+              --service-name "$AZURE_APIM_SERVICE_NAME" \
+              --location "$AZURE_LOCATION" \
+              --output none 2>/dev/null; then
+              echo "Purging soft-deleted APIM instance $AZURE_APIM_SERVICE_NAME…"
+              az apim deletedservice purge \
+                --service-name "$AZURE_APIM_SERVICE_NAME" \
+                --location "$AZURE_LOCATION"
+            else
+              echo "No soft-deleted APIM instance found — proceeding."
+            fi
 
       - name: Deploy infrastructure
         uses: azure/cli@9eb25b8360668fb0ecbafa808d40e2197b2f5f52 # v3.0.0
