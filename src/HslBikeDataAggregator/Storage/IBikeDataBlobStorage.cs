@@ -4,19 +4,15 @@ namespace HslBikeDataAggregator.Storage;
 
 public interface IBikeDataBlobStorage
 {
-    Task<IReadOnlyList<StationSnapshot>> GetRecentSnapshotsAsync(CancellationToken cancellationToken);
+    Task<SnapshotTimeSeries?> GetSnapshotTimeSeriesAsync(CancellationToken cancellationToken);
 
-    Task<IReadOnlyList<HourlyAvailability>> GetAvailabilityProfileAsync(string stationId, CancellationToken cancellationToken);
+    Task<MonthlyStationStatistics?> GetMonthlyStatisticsAsync(string stationId, CancellationToken cancellationToken);
 
-    Task<IReadOnlyList<StationHistory>> GetStationDestinationsAsync(string stationId, CancellationToken cancellationToken);
+    Task<IReadOnlyList<string>> ListMonthlyStatisticStationIdsAsync(CancellationToken cancellationToken);
 
-    Task<IReadOnlyList<string>> ListStationDestinationIdsAsync(CancellationToken cancellationToken);
+    Task WriteSnapshotTimeSeriesAsync(SnapshotTimeSeries snapshotTimeSeries, CancellationToken cancellationToken);
 
-    Task WriteRecentSnapshotsAsync(IReadOnlyList<StationSnapshot> snapshots, CancellationToken cancellationToken);
+    Task WriteMonthlyStatisticsAsync(string stationId, MonthlyStationStatistics monthlyStatistics, CancellationToken cancellationToken);
 
-    Task WriteAvailabilityProfileAsync(string stationId, IReadOnlyList<HourlyAvailability> availabilityProfile, CancellationToken cancellationToken);
-
-    Task WriteStationDestinationsAsync(string stationId, IReadOnlyList<StationHistory> destinations, CancellationToken cancellationToken);
-
-    Task DeleteStationDestinationsAsync(string stationId, CancellationToken cancellationToken);
+    Task DeleteMonthlyStatisticsAsync(string stationId, CancellationToken cancellationToken);
 }

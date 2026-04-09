@@ -298,8 +298,7 @@ public sealed class DeploymentWorkflowConfigurationTests
         Assert.Contains("Microsoft.ApiManagement/service/apis/operations", mainBicep, StringComparison.Ordinal);
         Assert.Contains("/stations", mainBicep, StringComparison.Ordinal);
         Assert.Contains("/snapshots", mainBicep, StringComparison.Ordinal);
-        Assert.Contains("/stations/{stationId}/availability", mainBicep, StringComparison.Ordinal);
-        Assert.Contains("/stations/{stationId}/destinations", mainBicep, StringComparison.Ordinal);
+        Assert.Contains("/stations/{stationId}/statistics", mainBicep, StringComparison.Ordinal);
     }
 
     [Fact]
@@ -332,6 +331,16 @@ public sealed class DeploymentWorkflowConfigurationTests
 
         Assert.Contains("cache-lookup", mainBicep, StringComparison.Ordinal);
         Assert.Contains("cache-store", mainBicep, StringComparison.Ordinal);
+    }
+
+    [Fact]
+    public async Task Infrastructure_ApimOverridesStationStatisticsCacheDuration()
+    {
+        var cancellationToken = TestContext.Current.CancellationToken;
+        var mainBicep = await File.ReadAllTextAsync(GetRepositoryFilePath("infra", "main.bicep"), cancellationToken);
+
+        Assert.Contains("parent: apimGetStationStatistics", mainBicep, StringComparison.Ordinal);
+        Assert.Contains("cache-store duration=\"3600\"", mainBicep, StringComparison.Ordinal);
     }
 
     [Fact]

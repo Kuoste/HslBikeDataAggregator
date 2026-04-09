@@ -1,6 +1,4 @@
 using System.Text.Json;
-
-using Azure;
 using Azure.Storage.Blobs;
 using Azure.Storage.Blobs.Models;
 using HslBikeDataAggregator.Models;
@@ -11,31 +9,84 @@ public sealed class BikeDataBlobStorage(BlobContainerClient blobContainerClient)
 {
     private static readonly JsonSerializerOptions SerializerOptions = new(JsonSerializerDefaults.Web);
 
-    public async Task<IReadOnlyList<StationSnapshot>> GetRecentSnapshotsAsync(CancellationToken cancellationToken)
-        => await ReadBlobAsync<StationSnapshot>(BikeDataBlobNames.RecentSnapshots, cancellationToken);
+    public Task<SnapshotTimeSeries?> GetSnapshotTimeSeriesAsync(CancellationToken cancellationToken)
+        => ReadBlobAsync<SnapshotTimeSeries>(BikeDataBlobNames.RecentSnapshots, cancellationToken);
 
-    public Task<IReadOnlyList<HourlyAvailability>> GetAvailabilityProfileAsync(string stationId, CancellationToken cancellationToken)
+    public Task<MonthlyStationStatistics?> GetMonthlyStatisticsAsync(string stationId, CancellationToken cancellationToken)
     {
         ArgumentException.ThrowIfNullOrWhiteSpace(stationId);
 
-        return ReadBlobAsync<HourlyAvailability>(BikeDataBlobNames.AvailabilityProfile(stationId), cancellationToken);
+        return ReadBlobAsync<MonthlyStationStatistics>(BikeDataBlobNames.MonthlyStatistics(stationId), cancellationToken);
     }
 
-    public Task<IReadOnlyList<StationHistory>> GetStationDestinationsAsync(string stationId, CancellationToken cancellationToken)
-    {
-        ArgumentException.ThrowIfNullOrWhiteSpace(stationId);
-
-        return ReadBlobAsync<StationHistory>(BikeDataBlobNames.DestinationProfile(stationId), cancellationToken);
-    }
-
-    public async Task<IReadOnlyList<string>> ListStationDestinationIdsAsync(CancellationToken cancellationToken)
+    public async Task<IReadOnlyList<string>> ListMonthlyStatisticStationIdsAsync(CancellationToken cancellationToken)
     {
         await blobContainerClient.CreateIfNotExistsAsync(cancellationToken: cancellationToken);
 
-        var stationIds = new List<string>();
-        await foreach (var blobItem in blobContainerClient.GetBlobsAsync(traits: BlobTraits.None, states: BlobStates.None, prefix: "destinations/", cancellationToken: cancellationToken))
+        return await ListStationIdsByPrefixAsync(BikeDataBlobNames.MonthlyStatisticsPrefix, cancellationToken);
+    }
+
+    public async Task WriteSnapshotTimeSeriesAsync(SnapshotTimeSeries snapshotTimeSeries, CancellationToken cancellationToken)
+    {
+        ArgumentNullException.ThrowIfNull(snapshotTimeSeries);
+
+        await blobContainerClient.CreateIfNotExistsAsync(cancellationToken: cancellationToken);
+        await blobContainerClient
+            .GetBlobClient(BikeDataBlobNames.RecentSnapshots)
+            .UploadAsync(BinaryData.FromObjectAsJson(snapshotTimeSeries, SerializerOptions), overwrite: true, cancellationToken);
+    }
+
+    public async Task WriteMonthlyStatisticsAsync(string stationId, MonthlyStationStatistics monthlyStatistics, CancellationToken cancellationToken)
+    {
+        ArgumentException.ThrowIfNullOrWhiteSpace(stationId);
+        ArgumentNullException.ThrowIfNull(monthlyStatistics);
+
+        await blobContainerClient.CreateIfNotExistsAsync(cancellationToken: cancellationToken);
+        await blobContainerClient
+            .GetBlobClient(BikeDataBlobNames.MonthlyStatistics(stationId))
+            .UploadAsync(BinaryData.FromObjectAsJson(monthlyStatistics, SerializerOptions), overwrite: true, cancellationToken);
+    }
+
+    public async Task DeleteMonthlyStatisticsAsync(string stationId, CancellationToken cancellationToken)
+    {
+        ArgumentException.ThrowIfNullOrWhiteSpace(stationId);
+
+        await blobContainerClient.CreateIfNotExistsAsync(cancellationToken: cancellationToken);
+        await blobContainerClient
+            .GetBlobClient(BikeDataBlobNames.MonthlyStatistics(stationId))
+            .DeleteIfExistsAsync(cancellationToken: cancellationToken);
+    }
+
+    private async Task<T?> ReadBlobAsync<T>(string blobName, CancellationToken cancellationToken)
+        where T : class
+    {
+        var content = await DownloadBlobContentAsync(blobName, cancellationToken);
+        return content?.ToObjectFromJson<T>(SerializerOptions);
+    }
+
+    private async Task<BinaryData?> DownloadBlobContentAsync(string blobName, CancellationToken cancellationToken)
+    {
+        await blobContainerClient.CreateIfNotExistsAsync(cancellationToken: cancellationToken);
+
+        try
         {
-            const string prefix = "destinations/";
+            var response = await blobContainerClient
+                .GetBlobClient(blobName)
+                .DownloadContentAsync(cancellationToken);
+
+            return response.Value.Content;
+        }
+        catch (Azure.RequestFailedException exception) when (exception.Status == 404)
+        {
+            return null;
+        }
+    }
+
+    private async Task<IReadOnlyList<string>> ListStationIdsByPrefixAsync(string prefix, CancellationToken cancellationToken)
+    {
+        var stationIds = new List<string>();
+        await foreach (var blobItem in blobContainerClient.GetBlobsAsync(traits: BlobTraits.None, states: BlobStates.None, prefix: prefix, cancellationToken: cancellationToken))
+        {
             const string suffix = ".json";
             if (!blobItem.Name.StartsWith(prefix, StringComparison.Ordinal)
                 || !blobItem.Name.EndsWith(suffix, StringComparison.Ordinal))
@@ -47,65 +98,5 @@ public sealed class BikeDataBlobStorage(BlobContainerClient blobContainerClient)
         }
 
         return stationIds;
-    }
-
-    private async Task<IReadOnlyList<T>> ReadBlobAsync<T>(string blobName, CancellationToken cancellationToken)
-    {
-        await blobContainerClient.CreateIfNotExistsAsync(cancellationToken: cancellationToken);
-
-        try
-        {
-            var response = await blobContainerClient
-                .GetBlobClient(blobName)
-                .DownloadContentAsync(cancellationToken);
-
-            return response.Value.Content.ToObjectFromJson<List<T>>(SerializerOptions) ?? [];
-        }
-        catch (RequestFailedException exception) when (exception.Status == 404)
-        {
-            return [];
-        }
-    }
-
-    public async Task WriteRecentSnapshotsAsync(IReadOnlyList<StationSnapshot> snapshots, CancellationToken cancellationToken)
-    {
-        ArgumentNullException.ThrowIfNull(snapshots);
-
-        await blobContainerClient.CreateIfNotExistsAsync(cancellationToken: cancellationToken);
-        await blobContainerClient
-            .GetBlobClient(BikeDataBlobNames.RecentSnapshots)
-            .UploadAsync(BinaryData.FromObjectAsJson(snapshots, SerializerOptions), overwrite: true, cancellationToken);
-    }
-
-    public async Task WriteAvailabilityProfileAsync(string stationId, IReadOnlyList<HourlyAvailability> availabilityProfile, CancellationToken cancellationToken)
-    {
-        ArgumentException.ThrowIfNullOrWhiteSpace(stationId);
-        ArgumentNullException.ThrowIfNull(availabilityProfile);
-
-        await blobContainerClient.CreateIfNotExistsAsync(cancellationToken: cancellationToken);
-        await blobContainerClient
-            .GetBlobClient(BikeDataBlobNames.AvailabilityProfile(stationId))
-            .UploadAsync(BinaryData.FromObjectAsJson(availabilityProfile, SerializerOptions), overwrite: true, cancellationToken);
-    }
-
-    public async Task WriteStationDestinationsAsync(string stationId, IReadOnlyList<StationHistory> destinations, CancellationToken cancellationToken)
-    {
-        ArgumentException.ThrowIfNullOrWhiteSpace(stationId);
-        ArgumentNullException.ThrowIfNull(destinations);
-
-        await blobContainerClient.CreateIfNotExistsAsync(cancellationToken: cancellationToken);
-        await blobContainerClient
-            .GetBlobClient(BikeDataBlobNames.DestinationProfile(stationId))
-            .UploadAsync(BinaryData.FromObjectAsJson(destinations, SerializerOptions), overwrite: true, cancellationToken);
-    }
-
-    public async Task DeleteStationDestinationsAsync(string stationId, CancellationToken cancellationToken)
-    {
-        ArgumentException.ThrowIfNullOrWhiteSpace(stationId);
-
-        await blobContainerClient.CreateIfNotExistsAsync(cancellationToken: cancellationToken);
-        await blobContainerClient
-            .GetBlobClient(BikeDataBlobNames.DestinationProfile(stationId))
-            .DeleteIfExistsAsync(cancellationToken: cancellationToken);
     }
 }

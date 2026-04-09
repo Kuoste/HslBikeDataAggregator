@@ -10,7 +10,7 @@ public sealed class ProcessStationHistoryFunction(
     ILogger<ProcessStationHistoryFunction> logger)
 {
     /// <summary>
-    /// Aggregates configured HSL trip history CSV files into per-station destination profiles.
+    /// Aggregates the newest available HSL trip history CSV into per-station monthly statistics.
     /// </summary>
     [Function(nameof(ProcessStationHistory))]
     public async Task ProcessStationHistory([TimerTrigger("%HistoryProcessingCron%")] TimerInfo timerInfo, CancellationToken cancellationToken)
@@ -23,7 +23,7 @@ public sealed class ProcessStationHistoryFunction(
         var result = await processStationHistoryService.ProcessAsync(cancellationToken);
 
         logger.LogInformation(
-            "ProcessStationHistory completed. Processed {JourneyCount} journeys from {SourceCount} sources into {StationCount} destination profiles.",
+            "ProcessStationHistory completed. Processed {JourneyCount} journeys from {SourceCount} sources into {StationCount} monthly station statistics payloads.",
             result.JourneyCount,
             result.SourceCount,
             result.StationCount);

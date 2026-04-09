@@ -38,7 +38,6 @@ builder.Services
 builder.Services.AddHttpClient<DigitransitStationClient>();
 builder.Services.AddHttpClient<ProcessStationHistoryService>();
 builder.Services.AddSingleton(TimeProvider.System);
-builder.Services.AddSingleton<AvailabilityProfileService>();
 builder.Services.AddSingleton<LiveStationCacheService>();
 builder.Services.AddSingleton(provider =>
 {

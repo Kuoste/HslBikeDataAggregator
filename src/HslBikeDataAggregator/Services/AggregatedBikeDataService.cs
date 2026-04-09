@@ -11,20 +11,13 @@ public sealed class AggregatedBikeDataService(
     public Task<IReadOnlyList<BikeStation>> GetStationsAsync(CancellationToken cancellationToken)
         => liveStationCacheService.GetStationsAsync(cancellationToken);
 
-    public Task<IReadOnlyList<StationSnapshot>> GetSnapshotsAsync(CancellationToken cancellationToken)
-        => bikeDataBlobStorage.GetRecentSnapshotsAsync(cancellationToken);
+    public async Task<SnapshotTimeSeries> GetSnapshotsAsync(CancellationToken cancellationToken)
+        => await bikeDataBlobStorage.GetSnapshotTimeSeriesAsync(cancellationToken) ?? SnapshotTimeSeries.Empty;
 
-    public Task<IReadOnlyList<HourlyAvailability>> GetAvailabilityAsync(string stationId, CancellationToken cancellationToken)
+    public async Task<MonthlyStationStatistics> GetStatisticsAsync(string stationId, CancellationToken cancellationToken)
     {
         ArgumentException.ThrowIfNullOrWhiteSpace(stationId);
 
-        return bikeDataBlobStorage.GetAvailabilityProfileAsync(stationId, cancellationToken);
-    }
-
-    public Task<IReadOnlyList<StationHistory>> GetDestinationsAsync(string stationId, CancellationToken cancellationToken)
-    {
-        ArgumentException.ThrowIfNullOrWhiteSpace(stationId);
-
-        return bikeDataBlobStorage.GetStationDestinationsAsync(stationId, cancellationToken);
+        return await bikeDataBlobStorage.GetMonthlyStatisticsAsync(stationId, cancellationToken) ?? MonthlyStationStatistics.Empty;
     }
 }

@@ -129,18 +129,28 @@ public sealed class StationsFunctionsTests
 
         var blobStorage = new Mock<IBikeDataBlobStorage>();
         blobStorage
-            .Setup(storage => storage.GetRecentSnapshotsAsync(cancellationToken))
-            .ReturnsAsync([
-                new StationSnapshot
-                {
-                    Timestamp = new DateTimeOffset(2026, 4, 4, 9, 45, 0, TimeSpan.Zero),
-                    BikeCounts = new Dictionary<string, int>
+            .Setup(storage => storage.GetSnapshotTimeSeriesAsync(cancellationToken))
+            .ReturnsAsync(new SnapshotTimeSeries
+            {
+                IntervalMinutes = 15,
+                Timestamps =
+                [
+                    new DateTimeOffset(2026, 4, 4, 9, 45, 0, TimeSpan.Zero)
+                ],
+                Stations =
+                [
+                    new StationCountSeries
                     {
-                        ["smoove:001"] = 8,
-                        ["smoove:002"] = 3
+                        StationId = "smoove:001",
+                        Counts = [8]
+                    },
+                    new StationCountSeries
+                    {
+                        StationId = "smoove:002",
+                        Counts = [3]
                     }
-                }
-            ]);
+                ]
+            });
 
         var function = new StationsFunctions(CreateBikeDataService(blobStorage), NullLogger<StationsFunctions>.Instance);
 
@@ -152,11 +162,11 @@ public sealed class StationsFunctionsTests
 
         responseData.Body.Position = 0;
         using var reader = new StreamReader(responseData.Body);
-        Assert.Equal("[{\"timestamp\":\"2026-04-04T09:45:00+00:00\",\"bikeCounts\":{\"smoove:001\":8,\"smoove:002\":3}}]", await reader.ReadToEndAsync(cancellationToken));
+        Assert.Equal("{\"intervalMinutes\":15,\"timestamps\":[\"2026-04-04T09:45:00Z\"],\"rows\":[[\"smoove:001\",8],[\"smoove:002\",3]]}", await reader.ReadToEndAsync(cancellationToken));
     }
 
     [Fact]
-    public async Task GetStationAvailability_ReturnsOkResponseWithStoredAvailabilityProfile()
+    public async Task GetStationStatistics_ReturnsOkResponseWithStoredStatistics()
     {
         var cancellationToken = TestContext.Current.CancellationToken;
         var services = new ServiceCollection();
@@ -183,27 +193,35 @@ public sealed class StationsFunctionsTests
         request.SetupGet(httpRequest => httpRequest.Headers).Returns(new HttpHeadersCollection());
         request.SetupGet(httpRequest => httpRequest.Identities).Returns(Array.Empty<ClaimsIdentity>());
         request.SetupGet(httpRequest => httpRequest.Method).Returns("GET");
-        request.SetupGet(httpRequest => httpRequest.Url).Returns(new Uri("https://localhost/api/stations/smoove:001/availability"));
+        request.SetupGet(httpRequest => httpRequest.Url).Returns(new Uri("https://localhost/api/stations/smoove:001/statistics"));
 
         var blobStorage = new Mock<IBikeDataBlobStorage>();
         blobStorage
-            .Setup(storage => storage.GetAvailabilityProfileAsync("smoove:001", cancellationToken))
-            .ReturnsAsync([
-                new HourlyAvailability
+            .Setup(storage => storage.GetMonthlyStatisticsAsync("smoove:001", cancellationToken))
+            .ReturnsAsync(new MonthlyStationStatistics
+            {
+                Month = "2026-04",
+                Demand = new DemandProfile
                 {
-                    Hour = 10,
-                    AverageBikesAvailable = 7.5
+                    DeparturesByHour = [1, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0],
+                    ArrivalsByHour = new int[24],
+                    WeekdayDeparturesByHour = [1, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0],
+                    WeekendDeparturesByHour = new int[24],
+                    WeekdayArrivalsByHour = new int[24],
+                    WeekendArrivalsByHour = new int[24]
                 },
-                new HourlyAvailability
+                Destinations = new ColumnarTable
                 {
-                    Hour = 11,
-                    AverageBikesAvailable = 5.25
+                    Fields = ["arrivalStationId", "tripCount", "averageDurationSeconds", "averageDistanceMetres"],
+                    Rows = [
+                        new object[] { "smoove:002", 12, 426, 1280 }
+                    ]
                 }
-            ]);
+            });
 
         var function = new StationsFunctions(CreateBikeDataService(blobStorage), NullLogger<StationsFunctions>.Instance);
 
-        var responseData = await function.GetStationAvailability(request.Object, "smoove:001", cancellationToken);
+        var responseData = await function.GetStationStatistics(request.Object, "smoove:001", cancellationToken);
 
         Assert.Equal(HttpStatusCode.OK, responseData.StatusCode);
         Assert.True(responseData.Headers.TryGetValues("Cache-Control", out var cacheControl));
@@ -211,64 +229,10 @@ public sealed class StationsFunctionsTests
 
         responseData.Body.Position = 0;
         using var reader = new StreamReader(responseData.Body);
-        Assert.Equal("[{\"hour\":10,\"averageBikesAvailable\":7.5},{\"hour\":11,\"averageBikesAvailable\":5.25}]", await reader.ReadToEndAsync(cancellationToken));
-    }
-
-    [Fact]
-    public async Task GetStationDestinations_ReturnsOkResponseWithStoredDestinations()
-    {
-        var cancellationToken = TestContext.Current.CancellationToken;
-        var services = new ServiceCollection();
-        services
-            .AddOptions<WorkerOptions>()
-            .Configure(options => options.Serializer = new JsonObjectSerializer());
-
-        var serviceProvider = services.BuildServiceProvider();
-
-        var functionContext = new Mock<FunctionContext>();
-        functionContext.SetupProperty(context => context.InstanceServices, serviceProvider);
-
-        var responseHeaders = new HttpHeadersCollection();
-        var responseBody = new MemoryStream();
-        var response = new Mock<HttpResponseData>(functionContext.Object);
-        response.SetupProperty(httpResponse => httpResponse.StatusCode);
-        response.SetupProperty(httpResponse => httpResponse.Body, responseBody);
-        response.SetupGet(httpResponse => httpResponse.Headers).Returns(responseHeaders);
-        response.SetupGet(httpResponse => httpResponse.Cookies).Returns(Mock.Of<HttpCookies>());
-
-        var request = new Mock<HttpRequestData>(functionContext.Object);
-        request.Setup(httpRequest => httpRequest.CreateResponse()).Returns(response.Object);
-        request.SetupGet(httpRequest => httpRequest.Body).Returns(Stream.Null);
-        request.SetupGet(httpRequest => httpRequest.Headers).Returns(new HttpHeadersCollection());
-        request.SetupGet(httpRequest => httpRequest.Identities).Returns(Array.Empty<ClaimsIdentity>());
-        request.SetupGet(httpRequest => httpRequest.Method).Returns("GET");
-        request.SetupGet(httpRequest => httpRequest.Url).Returns(new Uri("https://localhost/api/stations/smoove:001/destinations"));
-
-        var blobStorage = new Mock<IBikeDataBlobStorage>();
-        blobStorage
-            .Setup(storage => storage.GetStationDestinationsAsync("smoove:001", cancellationToken))
-            .ReturnsAsync([
-                new StationHistory
-                {
-                    DepartureStationId = "smoove:001",
-                    ArrivalStationId = "smoove:002",
-                    TripCount = 12,
-                    AverageDurationSeconds = 425.5,
-                    AverageDistanceMetres = 1_280.2
-                }
-            ]);
-
-        var function = new StationsFunctions(CreateBikeDataService(blobStorage), NullLogger<StationsFunctions>.Instance);
-
-        var responseData = await function.GetStationDestinations(request.Object, "smoove:001", cancellationToken);
-
-        Assert.Equal(HttpStatusCode.OK, responseData.StatusCode);
-        Assert.True(responseData.Headers.TryGetValues("Cache-Control", out var cacheControl));
-        Assert.Contains("public, max-age=3600", cacheControl);
-
-        responseData.Body.Position = 0;
-        using var reader = new StreamReader(responseData.Body);
-        Assert.Equal("[{\"departureStationId\":\"smoove:001\",\"arrivalStationId\":\"smoove:002\",\"tripCount\":12,\"averageDurationSeconds\":425.5,\"averageDistanceMetres\":1280.2}]", await reader.ReadToEndAsync(cancellationToken));
+        var body = await reader.ReadToEndAsync(cancellationToken);
+        Assert.Contains("\"month\":\"2026-04\"", body, StringComparison.Ordinal);
+        Assert.Contains("\"fields\":[\"arrivalStationId\",\"tripCount\",\"averageDurationSeconds\",\"averageDistanceMetres\"]", body, StringComparison.Ordinal);
+        Assert.Contains("[\"smoove:002\",12,426,1280]", body, StringComparison.Ordinal);
     }
 
     private const string EmptyStationsResponse = """

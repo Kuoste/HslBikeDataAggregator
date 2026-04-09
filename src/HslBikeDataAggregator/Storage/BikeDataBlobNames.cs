@@ -4,16 +4,12 @@ public static class BikeDataBlobNames
 {
     public const string ContainerName = "bike-data";
     public const string RecentSnapshots = "snapshots/recent.json";
+    public const string MonthlyStatisticsPrefix = "monthly-stats/";
 
     /// <summary>
-    /// Returns the blob name for a station's hourly availability profile.
+    /// Returns the blob name for a station's monthly statistics profile.
     /// </summary>
-    public static string AvailabilityProfile(string stationId) => $"availability/{SanitiseStationId(stationId)}.json";
-
-    /// <summary>
-    /// Returns the blob name for a station's destination profile.
-    /// </summary>
-    public static string DestinationProfile(string stationId) => $"destinations/{SanitiseStationId(stationId)}.json";
+    public static string MonthlyStatistics(string stationId) => $"{MonthlyStatisticsPrefix}{SanitiseStationId(stationId)}.json";
 
     /// <summary>
     /// Validates that a station ID does not contain path-traversal or control characters.

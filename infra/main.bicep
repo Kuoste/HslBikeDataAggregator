@@ -382,10 +382,10 @@ resource apimApiPolicy 'Microsoft.ApiManagement/service/apis/policies@2024-05-01
   ]
 }
 
-// Override cache duration for slow-changing endpoints (availability and destinations).
-resource apimAvailabilityCachePolicyFragment 'Microsoft.ApiManagement/service/apis/operations/policies@2024-05-01' = {
+// Override cache duration for the monthly station statistics endpoint.
+resource apimStationStatisticsCachePolicyFragment 'Microsoft.ApiManagement/service/apis/operations/policies@2024-05-01' = {
   name: 'policy'
-  parent: apimGetStationAvailability
+  parent: apimGetStationStatistics
   properties: {
     format: 'xml'
     value: '''
@@ -409,31 +409,6 @@ resource apimAvailabilityCachePolicyFragment 'Microsoft.ApiManagement/service/ap
   }
 }
 
-resource apimDestinationsCachePolicyFragment 'Microsoft.ApiManagement/service/apis/operations/policies@2024-05-01' = {
-  name: 'policy'
-  parent: apimGetStationDestinations
-  properties: {
-    format: 'xml'
-    value: '''
-<policies>
-  <inbound>
-    <base />
-    <cache-lookup vary-by-developer="false" vary-by-developer-groups="false" />
-  </inbound>
-  <backend>
-    <base />
-  </backend>
-  <outbound>
-    <base />
-    <cache-store duration="3600" />
-  </outbound>
-  <on-error>
-    <base />
-  </on-error>
-</policies>
-'''
-  }
-}
 
 // API operations — one per Function App HTTP endpoint.
 resource apimGetStations 'Microsoft.ApiManagement/service/apis/operations@2024-05-01' = {
@@ -456,30 +431,13 @@ resource apimGetSnapshots 'Microsoft.ApiManagement/service/apis/operations@2024-
   }
 }
 
-resource apimGetStationAvailability 'Microsoft.ApiManagement/service/apis/operations@2024-05-01' = {
-  name: 'get-station-availability'
+resource apimGetStationStatistics 'Microsoft.ApiManagement/service/apis/operations@2024-05-01' = {
+  name: 'get-station-statistics'
   parent: apimApi
   properties: {
-    displayName: 'Get station availability'
+    displayName: 'Get station statistics'
     method: 'GET'
-    urlTemplate: '/stations/{stationId}/availability'
-    templateParameters: [
-      {
-        name: 'stationId'
-        required: true
-        type: 'string'
-      }
-    ]
-  }
-}
-
-resource apimGetStationDestinations 'Microsoft.ApiManagement/service/apis/operations@2024-05-01' = {
-  name: 'get-station-destinations'
-  parent: apimApi
-  properties: {
-    displayName: 'Get station destinations'
-    method: 'GET'
-    urlTemplate: '/stations/{stationId}/destinations'
+    urlTemplate: '/stations/{stationId}/statistics'
     templateParameters: [
       {
         name: 'stationId'

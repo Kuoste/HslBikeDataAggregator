@@ -18,15 +18,15 @@ This service is the **only component** that holds the HSL Digitransit API key. T
 | Function | Trigger | Purpose |
 |---|---|---|
 | `PollStations` | Timer (every 2-5 min) | Fetch live bike data from Digitransit, store snapshot |
+| `ProcessStationHistory` | Timer (daily) | Fetch the newest available HSL open history month and store per-station monthly statistics |
 | `GetStations` | HTTP GET | Return latest station availability |
-| `GetStationAvailability` | HTTP GET | Return aggregated hourly availability profile for a station |
-| `GetStationDestinations` | HTTP GET | Return popular destinations from HSL open history data |
-| `GetSnapshots` | HTTP GET | Return recent snapshots for trend calculation |
+| `GetStationStatistics` | HTTP GET | Return monthly demand buckets and destination statistics for a station |
+| `GetSnapshots` | HTTP GET | Return recent snapshots as a compact columnar time series |
 
 ### Storage
 
-- Azure Blob Storage for aggregated data (snapshots, hourly profiles, destination data).
-- Data format: JSON blobs, one per station for availability profiles.
+- Azure Blob Storage for aggregated data (rolling snapshot time series and monthly station statistics).
+- Data format: compact JSON blobs optimised for frontend reads.
 
 ### API Gateway
 
@@ -38,9 +38,8 @@ This service is the **only component** that holds the HSL Digitransit API key. T
 ## API Contract
 
 - `GET /api/stations` — current bike availability for all stations
-- `GET /api/stations/{id}/availability` — aggregated hourly availability (24 buckets)
-- `GET /api/stations/{id}/destinations` — top destinations by trip count
-- `GET /api/snapshots` — last N snapshots for trend arrows
+- `GET /api/snapshots` — compact rolling snapshot time series for trend arrows
+- `GET /api/stations/{id}/statistics` — monthly demand buckets and destination statistics
 
 All endpoints return JSON. Requests are routed through the APIM gateway, which handles CORS, rate limiting, and function key injection. Direct calls to the Function App require a valid function key.
 
@@ -52,9 +51,9 @@ All endpoints return JSON. Requests are routed through the APIM gateway, which h
 ## Key Models (compatible with HslBikeApp)
 
 - `BikeStation` — id, name, lat/lon, capacity, bikesAvailable, spacesAvailable, isActive
-- `StationSnapshot` — timestamp + dictionary of stationId -> bikeCount
-- `StationHistory` — departure/arrival station pair, tripCount, avg duration/distance
-- `HourlyAvailability` — hour (0-23) + average bike count for a station
+- `SnapshotTimeSeries` — interval, timestamp series, station rows
+- `MonthlyStationStatistics` — month, demand buckets, and destination table
+- `DestinationRow` — arrival station, trip count, average duration, average distance
 
 ## Conventions
 

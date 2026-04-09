@@ -20,12 +20,11 @@ A timer-triggered function polls HSL every few minutes and writes JSON blobs to 
 
 | Function | Trigger | Route | Purpose |
 |---|---|---|---|
-| `PollStations` | Timer (every 2–5 min) | — | Poll Digitransit, write station list, rolling snapshots, and hourly availability profiles to blob storage |
-| `ProcessStationHistory` | Timer (daily) | — | Fetch HSL open history data and write per-station destination blobs |
+| `PollStations` | Timer (every 2–5 min) | — | Poll Digitransit and write the rolling snapshot time series blob |
+| `ProcessStationHistory` | Timer (daily) | — | Fetch the newest available HSL open history month and write per-station monthly statistics blobs |
 | `GetStations` | HTTP GET | `/api/stations` | Return latest station availability |
-| `GetSnapshots` | HTTP GET | `/api/snapshots` | Return recent rolling snapshots for trend calculation |
-| `GetStationAvailability` | HTTP GET | `/api/stations/{id}/availability` | Return hourly availability profile (24 buckets) |
-| `GetStationDestinations` | HTTP GET | `/api/stations/{id}/destinations` | Return popular destinations for a station |
+| `GetSnapshots` | HTTP GET | `/api/snapshots` | Return the compact rolling snapshot time series for trend calculation |
+| `GetStationStatistics` | HTTP GET | `/api/stations/{id}/statistics` | Return monthly demand buckets and destination statistics for a station |
 
 All HTTP endpoints return JSON. Requests are routed through Azure API Management, which enforces rate limiting, response caching, and injects the function host key. Direct calls to the Function App require a valid function key.
 
@@ -48,37 +47,39 @@ All HTTP endpoints return JSON. Requests are routed through Azure API Management
 ]
 ```
 
-### `GET /api/snapshots` → `StationSnapshot[]`
+### `GET /api/snapshots` → `SnapshotTimeSeries`
 
 ```json
-[
-  {
-    "timestamp": "2026-04-03T12:00:00+03:00",
-    "bikeCounts": { "001": 5, "002": 3 }
-  }
-]
+{
+  "intervalMinutes": 15,
+  "timestamps": ["2026-04-03T09:00:00Z", "2026-04-03T09:15:00Z"],
+  "rows": [
+    ["001", 5, 4],
+    ["002", 3, 2]
+  ]
+}
 ```
 
-### `GET /api/stations/{id}/availability` → `HourlyAvailability[]`
+### `GET /api/stations/{id}/statistics` → `MonthlyStationStatistics`
 
 ```json
-[
-  { "hour": 8, "averageBikesAvailable": 5.2 }
-]
-```
-
-### `GET /api/stations/{id}/destinations` → `StationHistory[]`
-
-```json
-[
-  {
-    "departureStationId": "001",
-    "arrivalStationId": "023",
-    "tripCount": 42,
-    "averageDurationSeconds": 360.5,
-    "averageDistanceMetres": 1250.3
+{
+  "month": "2026-04",
+  "demand": {
+    "departuresByHour": [0, 0, 0, 0, 0, 0, 0, 0, 12, 9, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0],
+    "arrivalsByHour": [0, 0, 0, 0, 0, 0, 0, 0, 8, 14, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0],
+    "weekdayDeparturesByHour": [0, 0, 0, 0, 0, 0, 0, 0, 12, 9, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0],
+    "weekendDeparturesByHour": [0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0],
+    "weekdayArrivalsByHour": [0, 0, 0, 0, 0, 0, 0, 0, 8, 14, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0],
+    "weekendArrivalsByHour": [0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0]
+  },
+  "destinations": {
+    "fields": ["arrivalStationId", "tripCount", "averageDurationSeconds", "averageDistanceMetres"],
+    "rows": [
+      ["023", 42, 361, 1250]
+    ]
   }
-]
+}
 ```
 
 ## Project layout

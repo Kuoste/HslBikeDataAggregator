@@ -75,87 +75,99 @@ public sealed class AggregatedBikeDataServiceTests
     {
         var blobStorage = new Mock<IBikeDataBlobStorage>();
         blobStorage
-            .Setup(storage => storage.GetRecentSnapshotsAsync(CancellationToken))
-            .ReturnsAsync([
-                new StationSnapshot
-                {
-                    Timestamp = new DateTimeOffset(2026, 4, 4, 9, 45, 0, TimeSpan.Zero),
-                    BikeCounts = new Dictionary<string, int>
+            .Setup(storage => storage.GetSnapshotTimeSeriesAsync(CancellationToken))
+            .ReturnsAsync(new SnapshotTimeSeries
+            {
+                IntervalMinutes = 15,
+                Timestamps =
+                [
+                    new DateTimeOffset(2026, 4, 4, 9, 45, 0, TimeSpan.Zero)
+                ],
+                Stations =
+                [
+                    new StationCountSeries
                     {
-                        ["smoove:001"] = 8
+                        StationId = "smoove:001",
+                        Counts = [8]
                     }
-                }
-            ]);
+                ]
+            });
 
         var service = CreateService(blobStorage, EmptyStationsResponse);
 
         var result = await service.GetSnapshotsAsync(CancellationToken);
 
-        var snapshot = Assert.Single(result);
-        Assert.Equal(8, snapshot.BikeCounts["smoove:001"]);
+        Assert.Equal(15, result.IntervalMinutes);
+        var station = Assert.Single(result.Stations);
+        Assert.Equal(8, Assert.Single(station.Counts));
     }
 
     [Fact]
-    public async Task GetSnapshotsAsync_ReturnsEmptyCollectionWhenBlobStorageHasNoSnapshots()
+    public async Task GetSnapshotsAsync_ReturnsEmptyPayloadWhenBlobStorageHasNoSnapshots()
     {
         var blobStorage = new Mock<IBikeDataBlobStorage>();
         blobStorage
-            .Setup(storage => storage.GetRecentSnapshotsAsync(CancellationToken))
-            .ReturnsAsync([]);
+            .Setup(storage => storage.GetSnapshotTimeSeriesAsync(CancellationToken))
+            .ReturnsAsync((SnapshotTimeSeries?)null);
 
         var service = CreateService(blobStorage, EmptyStationsResponse);
 
         var result = await service.GetSnapshotsAsync(CancellationToken);
 
-        Assert.Empty(result);
+        Assert.Empty(result.Timestamps);
+        Assert.Empty(result.Stations);
     }
 
     [Fact]
-    public async Task GetAvailabilityAsync_ReturnsAvailabilityProfileFromBlobStorage()
+    public async Task GetStatisticsAsync_ReturnsMonthlyStatisticsFromBlobStorage()
     {
         var blobStorage = new Mock<IBikeDataBlobStorage>();
         blobStorage
-            .Setup(storage => storage.GetAvailabilityProfileAsync("smoove:001", CancellationToken))
-            .ReturnsAsync([
-                new HourlyAvailability
+            .Setup(storage => storage.GetMonthlyStatisticsAsync("smoove:001", CancellationToken))
+            .ReturnsAsync(new MonthlyStationStatistics
+            {
+                Month = "2026-04",
+                Demand = new DemandProfile
                 {
-                    Hour = 10,
-                    AverageBikesAvailable = 7.5
+                    DeparturesByHour = [1, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0],
+                    ArrivalsByHour = new int[24],
+                    WeekdayDeparturesByHour = [1, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0],
+                    WeekendDeparturesByHour = new int[24],
+                    WeekdayArrivalsByHour = new int[24],
+                    WeekendArrivalsByHour = new int[24]
+                },
+                Destinations = new ColumnarTable
+                {
+                    Fields = ["arrivalStationId", "tripCount", "averageDurationSeconds", "averageDistanceMetres"],
+                    Rows = [
+                        ["smoove:002", 12, 426, 1280]
+                    ]
                 }
-            ]);
+            });
 
         var service = CreateService(blobStorage, EmptyStationsResponse);
 
-        var result = await service.GetAvailabilityAsync("smoove:001", CancellationToken);
+        var result = await service.GetStatisticsAsync("smoove:001", CancellationToken);
 
-        var availability = Assert.Single(result);
-        Assert.Equal(10, availability.Hour);
-        Assert.Equal(7.5, availability.AverageBikesAvailable);
+        Assert.Equal("2026-04", result.Month);
+        Assert.Equal(1, result.Demand.DeparturesByHour[0]);
+        Assert.Equal("smoove:002", Assert.IsType<string>(result.Destinations.Rows[0][0]));
     }
 
     [Fact]
-    public async Task GetDestinationsAsync_ReturnsDestinationsFromBlobStorage()
+    public async Task GetStatisticsAsync_ReturnsEmptyPayloadWhenBlobStorageHasNoStatistics()
     {
         var blobStorage = new Mock<IBikeDataBlobStorage>();
         blobStorage
-            .Setup(storage => storage.GetStationDestinationsAsync("smoove:001", CancellationToken))
-            .ReturnsAsync([
-                new StationHistory
-                {
-                    DepartureStationId = "smoove:001",
-                    ArrivalStationId = "smoove:002",
-                    TripCount = 12,
-                    AverageDurationSeconds = 425.5,
-                    AverageDistanceMetres = 1_280.2
-                }
-            ]);
+            .Setup(storage => storage.GetMonthlyStatisticsAsync("smoove:001", CancellationToken))
+            .ReturnsAsync((MonthlyStationStatistics?)null);
 
         var service = CreateService(blobStorage, EmptyStationsResponse);
 
-        var result = await service.GetDestinationsAsync("smoove:001", CancellationToken);
+        var result = await service.GetStatisticsAsync("smoove:001", CancellationToken);
 
-        var destination = Assert.Single(result);
-        Assert.Equal("smoove:002", destination.ArrivalStationId);
+        Assert.Equal(string.Empty, result.Month);
+        Assert.Empty(result.Destinations.Fields);
     }
 
     private const string EmptyStationsResponse = """

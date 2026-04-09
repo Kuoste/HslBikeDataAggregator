@@ -29,23 +29,16 @@ public sealed class StationsFunctions(
         CancellationToken cancellationToken)
         => CreateJsonResponseAsync(request, bikeDataService.GetSnapshotsAsync(cancellationToken), SnapshotsCacheControl, cancellationToken);
 
-    [Function(nameof(GetStationAvailability))]
-    public Task<HttpResponseData> GetStationAvailability(
-        [HttpTrigger(AuthorizationLevel.Function, "get", Route = "stations/{stationId}/availability")] HttpRequestData request,
+    [Function(nameof(GetStationStatistics))]
+    public Task<HttpResponseData> GetStationStatistics(
+        [HttpTrigger(AuthorizationLevel.Function, "get", Route = "stations/{stationId}/statistics")] HttpRequestData request,
         string stationId,
         CancellationToken cancellationToken)
-        => CreateJsonResponseAsync(request, bikeDataService.GetAvailabilityAsync(stationId, cancellationToken), StationStatisticsCacheControl, cancellationToken);
-
-    [Function(nameof(GetStationDestinations))]
-    public Task<HttpResponseData> GetStationDestinations(
-        [HttpTrigger(AuthorizationLevel.Function, "get", Route = "stations/{stationId}/destinations")] HttpRequestData request,
-        string stationId,
-        CancellationToken cancellationToken)
-        => CreateJsonResponseAsync(request, bikeDataService.GetDestinationsAsync(stationId, cancellationToken), StationStatisticsCacheControl, cancellationToken);
+        => CreateJsonResponseAsync(request, bikeDataService.GetStatisticsAsync(stationId, cancellationToken), StationStatisticsCacheControl, cancellationToken);
 
     private async Task<HttpResponseData> CreateJsonResponseAsync<T>(
         HttpRequestData request,
-        Task<IReadOnlyList<T>> payloadTask,
+        Task<T> payloadTask,
         string cacheControl,
         CancellationToken cancellationToken)
     {
@@ -53,7 +46,7 @@ public sealed class StationsFunctions(
         var response = request.CreateResponse(HttpStatusCode.OK);
         response.Headers.Add("Cache-Control", cacheControl);
         await response.WriteAsJsonAsync(payload, cancellationToken);
-        logger.LogInformation("Served {PayloadType} response with {Count} items.", typeof(T).Name, payload.Count);
+        logger.LogInformation("Served {PayloadType} response.", typeof(T).Name);
         return response;
     }
 }

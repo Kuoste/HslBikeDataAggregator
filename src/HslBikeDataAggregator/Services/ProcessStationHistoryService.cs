@@ -24,18 +24,17 @@ public sealed class ProcessStationHistoryService(
     private readonly string allowedTripHistoryHost = string.IsNullOrWhiteSpace(options.Value.AllowedTripHistoryHost)
         ? HistoryProcessingOptions.DefaultAllowedTripHistoryHost
         : options.Value.AllowedTripHistoryHost;
-    private readonly int rollingWindowMonthCount = Math.Max(options.Value.RollingWindowMonthCount, 1);
-    private readonly int availabilityProbeMonthCount = Math.Max(options.Value.AvailabilityProbeMonthCount, Math.Max(options.Value.RollingWindowMonthCount, 1));
+    private readonly int availabilityProbeMonthCount = Math.Max(options.Value.AvailabilityProbeMonthCount, 1);
 
     /// <summary>
-    /// Discovers the newest available HSL trip history CSV files, aggregates a rolling destination window, and stores the profiles.
+    /// Discovers the newest available HSL trip history CSV, aggregates monthly station statistics, and stores them.
     /// </summary>
     public async Task<HistoryProcessingResult> ProcessAsync(CancellationToken cancellationToken)
     {
-        var availableMonths = await DiscoverAvailableMonthsAsync(cancellationToken);
-        if (availableMonths.Count == 0)
+        var availableMonth = await DiscoverAvailableMonthAsync(cancellationToken);
+        if (availableMonth is null)
         {
-            logger.LogWarning("No recent HSL trip history CSV files were available. Skipping destination processing.");
+            logger.LogWarning("No recent HSL trip history CSV files were available. Skipping monthly statistics processing.");
             return new HistoryProcessingResult
             {
                 SourceCount = 0,
@@ -44,66 +43,65 @@ public sealed class ProcessStationHistoryService(
             };
         }
 
-        var aggregates = new Dictionary<(string DepartureStationId, string ArrivalStationId), DestinationAggregate>();
-        var processedJourneyCount = 0;
+        var month = availableMonth.Value;
+        var monthKey = month.ToString("yyyy-MM", CultureInfo.InvariantCulture);
+        var stationAggregates = new Dictionary<string, StationStatisticsAggregate>(StringComparer.Ordinal);
+        var processedJourneyCount = await AggregateSourceAsync(BuildTripHistoryUrl(month), stationAggregates, cancellationToken);
 
-        foreach (var availableMonth in availableMonths)
+        var stationStatistics = stationAggregates
+            .OrderBy(static aggregate => aggregate.Key, StringComparer.Ordinal)
+            .ToDictionary(
+                aggregate => aggregate.Key,
+                aggregate => aggregate.Value.ToMonthlyStatistics(monthKey),
+                StringComparer.Ordinal);
+
+        foreach (var stationStatistic in stationStatistics)
         {
-            processedJourneyCount += await AggregateSourceAsync(BuildTripHistoryUrl(availableMonth), aggregates, cancellationToken);
+            var existingStatistics = await bikeDataBlobStorage.GetMonthlyStatisticsAsync(stationStatistic.Key, cancellationToken);
+            if (string.Equals(existingStatistics?.Month, monthKey, StringComparison.Ordinal))
+            {
+                continue;
+            }
+
+            await bikeDataBlobStorage.WriteMonthlyStatisticsAsync(stationStatistic.Key, stationStatistic.Value, cancellationToken);
         }
 
-        var stationDestinations = new Dictionary<string, IReadOnlyList<StationHistory>>(StringComparer.Ordinal);
-        foreach (var stationGroup in aggregates.GroupBy(static aggregate => aggregate.Key.DepartureStationId, StringComparer.Ordinal))
-        {
-            stationDestinations[stationGroup.Key] = stationGroup
-                .Select(static aggregate => aggregate.Value.ToStationHistory(aggregate.Key.DepartureStationId, aggregate.Key.ArrivalStationId))
-                .OrderByDescending(static history => history.TripCount)
-                .ThenBy(static history => history.ArrivalStationId, StringComparer.Ordinal)
-                .ToArray();
-        }
-
-        foreach (var stationDestination in stationDestinations.OrderBy(static stationDestination => stationDestination.Key, StringComparer.Ordinal))
-        {
-            await bikeDataBlobStorage.WriteStationDestinationsAsync(stationDestination.Key, stationDestination.Value, cancellationToken);
-        }
-
-        var currentStationIds = stationDestinations.Keys.ToHashSet(StringComparer.Ordinal);
-        var existingStationIds = await bikeDataBlobStorage.ListStationDestinationIdsAsync(cancellationToken);
+        var currentStationIds = stationStatistics.Keys.ToHashSet(StringComparer.Ordinal);
+        var existingStationIds = await bikeDataBlobStorage.ListMonthlyStatisticStationIdsAsync(cancellationToken);
         foreach (var staleStationId in existingStationIds.Except(currentStationIds, StringComparer.Ordinal).OrderBy(static stationId => stationId, StringComparer.Ordinal))
         {
-            await bikeDataBlobStorage.DeleteStationDestinationsAsync(staleStationId, cancellationToken);
+            await bikeDataBlobStorage.DeleteMonthlyStatisticsAsync(staleStationId, cancellationToken);
         }
 
         logger.LogInformation(
-            "Processed {JourneyCount} historical journeys from {SourceCount} sources into {StationCount} destination profiles for months {Months}.",
+            "Processed {JourneyCount} historical journeys from {SourceCount} source into {StationCount} monthly station statistics payloads for month {Month}.",
             processedJourneyCount,
-            availableMonths.Count,
-            stationDestinations.Count,
-            string.Join(", ", availableMonths.Select(static month => $"{month:yyyy-MM}")));
+            1,
+            stationStatistics.Count,
+            monthKey);
 
         return new HistoryProcessingResult
         {
-            SourceCount = availableMonths.Count,
+            SourceCount = 1,
             JourneyCount = processedJourneyCount,
-            StationCount = stationDestinations.Count
+            StationCount = stationStatistics.Count
         };
     }
 
-    private async Task<IReadOnlyList<DateOnly>> DiscoverAvailableMonthsAsync(CancellationToken cancellationToken)
+    private async Task<DateOnly?> DiscoverAvailableMonthAsync(CancellationToken cancellationToken)
     {
         var newestCandidateMonth = new DateOnly(timeProvider.GetUtcNow().Year, timeProvider.GetUtcNow().Month, 1);
-        var availableMonths = new List<DateOnly>(rollingWindowMonthCount);
 
-        for (var monthOffset = 0; monthOffset < availabilityProbeMonthCount && availableMonths.Count < rollingWindowMonthCount; monthOffset++)
+        for (var monthOffset = 0; monthOffset < availabilityProbeMonthCount; monthOffset++)
         {
             var candidateMonth = newestCandidateMonth.AddMonths(-monthOffset);
             if (await TripHistoryMonthExistsAsync(candidateMonth, cancellationToken))
             {
-                availableMonths.Add(candidateMonth);
+                return candidateMonth;
             }
         }
 
-        return availableMonths;
+        return null;
     }
 
     private async Task<bool> TripHistoryMonthExistsAsync(DateOnly month, CancellationToken cancellationToken)
@@ -135,7 +133,7 @@ public sealed class ProcessStationHistoryService(
 
     private async Task<int> AggregateSourceAsync(
         string sourceUrl,
-        Dictionary<(string DepartureStationId, string ArrivalStationId), DestinationAggregate> aggregates,
+        Dictionary<string, StationStatisticsAggregate> stationAggregates,
         CancellationToken cancellationToken)
     {
         using var response = await httpClient.GetAsync(sourceUrl, HttpCompletionOption.ResponseHeadersRead, cancellationToken);
@@ -167,18 +165,29 @@ public sealed class ProcessStationHistoryService(
                 continue;
             }
 
-            var key = (journey.DepartureStationId, journey.ArrivalStationId);
-            if (!aggregates.TryGetValue(key, out var aggregate))
-            {
-                aggregate = new DestinationAggregate();
-                aggregates[key] = aggregate;
-            }
-
-            aggregate.Add(journey.DurationSeconds, journey.DistanceMetres);
+            GetOrCreateStationAggregate(stationAggregates, journey.DepartureStationId)
+                .AddDeparture(journey.DepartureTime);
+            GetOrCreateStationAggregate(stationAggregates, journey.ArrivalStationId)
+                .AddArrival(journey.ArrivalTime);
+            GetOrCreateStationAggregate(stationAggregates, journey.DepartureStationId)
+                .AddDestination(journey.ArrivalStationId, journey.DurationSeconds, journey.DistanceMetres);
             processedJourneyCount++;
         }
 
         return processedJourneyCount;
+    }
+
+    private static StationStatisticsAggregate GetOrCreateStationAggregate(
+        Dictionary<string, StationStatisticsAggregate> stationAggregates,
+        string stationId)
+    {
+        if (!stationAggregates.TryGetValue(stationId, out var aggregate))
+        {
+            aggregate = new StationStatisticsAggregate();
+            stationAggregates[stationId] = aggregate;
+        }
+
+        return aggregate;
     }
 
     private static TripHistoryColumnIndexes GetColumnIndexes(IReadOnlyList<string> headers)
@@ -188,23 +197,25 @@ public sealed class ProcessStationHistoryService(
             .ToArray();
 
         return new TripHistoryColumnIndexes(
+            GetRequiredColumnIndex(normalisedHeaders, "departure", "departure time"),
+            GetRequiredColumnIndex(normalisedHeaders, "return", "return time"),
             GetRequiredColumnIndex(normalisedHeaders, "departure station id"),
             GetRequiredColumnIndex(normalisedHeaders, "return station id"),
             GetRequiredColumnIndex(normalisedHeaders, "covered distance (m)"),
             GetRequiredColumnIndex(normalisedHeaders, "duration (sec.)"));
     }
 
-    private static int GetRequiredColumnIndex(IReadOnlyList<string> headers, string requiredHeader)
+    private static int GetRequiredColumnIndex(IReadOnlyList<string> headers, params string[] requiredHeaders)
     {
         for (var index = 0; index < headers.Count; index++)
         {
-            if (string.Equals(headers[index], requiredHeader, StringComparison.Ordinal))
+            if (requiredHeaders.Any(requiredHeader => string.Equals(headers[index], requiredHeader, StringComparison.Ordinal)))
             {
                 return index;
             }
         }
 
-        throw new InvalidOperationException($"Trip history CSV is missing required column '{requiredHeader}'.");
+        throw new InvalidOperationException($"Trip history CSV is missing required column '{string.Join("' or '", requiredHeaders)}'.");
     }
 
     private static bool TryCreateJourney(
@@ -213,7 +224,9 @@ public sealed class ProcessStationHistoryService(
         out TripHistoryJourney journey)
     {
         journey = default;
-        if (fields.Count <= columnIndexes.DurationSeconds
+        if (fields.Count <= columnIndexes.ArrivalTime
+            || fields.Count <= columnIndexes.DepartureTime
+            || fields.Count <= columnIndexes.DurationSeconds
             || fields.Count <= columnIndexes.DistanceMetres
             || fields.Count <= columnIndexes.ArrivalStationId
             || fields.Count <= columnIndexes.DepartureStationId)
@@ -228,14 +241,42 @@ public sealed class ProcessStationHistoryService(
             return false;
         }
 
+        if (!TryParseJourneyTime(fields[columnIndexes.DepartureTime], out var departureTime)
+            || !TryParseJourneyTime(fields[columnIndexes.ArrivalTime], out var arrivalTime))
+        {
+            return false;
+        }
+
         if (!double.TryParse(fields[columnIndexes.DurationSeconds], CultureInfo.InvariantCulture, out var durationSeconds)
             || !double.TryParse(fields[columnIndexes.DistanceMetres], CultureInfo.InvariantCulture, out var distanceMetres))
         {
             return false;
         }
 
-        journey = new TripHistoryJourney(departureStationId, arrivalStationId, durationSeconds, distanceMetres);
+        journey = new TripHistoryJourney(
+            departureTime,
+            arrivalTime,
+            departureStationId,
+            arrivalStationId,
+            (int)Math.Round(durationSeconds, MidpointRounding.AwayFromZero),
+            (int)Math.Round(distanceMetres, MidpointRounding.AwayFromZero));
         return true;
+    }
+
+    private static bool TryParseJourneyTime(string value, out DateTime journeyTime)
+    {
+        if (DateTimeOffset.TryParse(
+            value,
+            CultureInfo.InvariantCulture,
+            DateTimeStyles.AllowWhiteSpaces | DateTimeStyles.AssumeLocal,
+            out var dateTimeOffset))
+        {
+            journeyTime = dateTimeOffset.DateTime;
+            return true;
+        }
+
+        journeyTime = default;
+        return false;
     }
 
     private static string NormaliseStationId(string stationId)
@@ -290,41 +331,114 @@ public sealed class ProcessStationHistoryService(
         return fields;
     }
 
+    private sealed class StationStatisticsAggregate
+    {
+        private readonly int[] departuresByHour = new int[24];
+        private readonly int[] arrivalsByHour = new int[24];
+        private readonly int[] weekdayDeparturesByHour = new int[24];
+        private readonly int[] weekendDeparturesByHour = new int[24];
+        private readonly int[] weekdayArrivalsByHour = new int[24];
+        private readonly int[] weekendArrivalsByHour = new int[24];
+        private readonly Dictionary<string, DestinationAggregate> destinations = new(StringComparer.Ordinal);
+
+        public void AddDeparture(DateTime departureTime)
+        {
+            departuresByHour[departureTime.Hour]++;
+            if (IsWeekend(departureTime.DayOfWeek))
+            {
+                weekendDeparturesByHour[departureTime.Hour]++;
+                return;
+            }
+
+            weekdayDeparturesByHour[departureTime.Hour]++;
+        }
+
+        public void AddArrival(DateTime arrivalTime)
+        {
+            arrivalsByHour[arrivalTime.Hour]++;
+            if (IsWeekend(arrivalTime.DayOfWeek))
+            {
+                weekendArrivalsByHour[arrivalTime.Hour]++;
+                return;
+            }
+
+            weekdayArrivalsByHour[arrivalTime.Hour]++;
+        }
+
+        public void AddDestination(string arrivalStationId, int durationSeconds, int distanceMetres)
+        {
+            if (!destinations.TryGetValue(arrivalStationId, out var destinationAggregate))
+            {
+                destinationAggregate = new DestinationAggregate();
+                destinations[arrivalStationId] = destinationAggregate;
+            }
+
+            destinationAggregate.Add(durationSeconds, distanceMetres);
+        }
+
+        public MonthlyStationStatistics ToMonthlyStatistics(string month)
+            => new()
+            {
+                Month = month,
+                Demand = new DemandProfile
+                {
+                    DeparturesByHour = [.. departuresByHour],
+                    ArrivalsByHour = [.. arrivalsByHour],
+                    WeekdayDeparturesByHour = [.. weekdayDeparturesByHour],
+                    WeekendDeparturesByHour = [.. weekendDeparturesByHour],
+                    WeekdayArrivalsByHour = [.. weekdayArrivalsByHour],
+                    WeekendArrivalsByHour = [.. weekendArrivalsByHour]
+                },
+                Destinations = ColumnarTableMapper.ToDestinationTable(
+                    destinations
+                        .OrderByDescending(static destination => destination.Value.TripCount)
+                        .ThenBy(static destination => destination.Key, StringComparer.Ordinal)
+                        .Select(destination => destination.Value.ToDestinationRow(destination.Key))
+                        .ToArray())
+            };
+
+        private static bool IsWeekend(DayOfWeek dayOfWeek)
+            => dayOfWeek is DayOfWeek.Saturday or DayOfWeek.Sunday;
+    }
+
     private sealed class DestinationAggregate
     {
         public int TripCount { get; private set; }
 
-        public double TotalDurationSeconds { get; private set; }
+        public long TotalDurationSeconds { get; private set; }
 
-        public double TotalDistanceMetres { get; private set; }
+        public long TotalDistanceMetres { get; private set; }
 
-        public void Add(double durationSeconds, double distanceMetres)
+        public void Add(int durationSeconds, int distanceMetres)
         {
             TripCount++;
             TotalDurationSeconds += durationSeconds;
             TotalDistanceMetres += distanceMetres;
         }
 
-        public StationHistory ToStationHistory(string departureStationId, string arrivalStationId)
+        public DestinationRow ToDestinationRow(string arrivalStationId)
             => new()
             {
-                DepartureStationId = departureStationId,
                 ArrivalStationId = arrivalStationId,
                 TripCount = TripCount,
-                AverageDurationSeconds = TotalDurationSeconds / TripCount,
-                AverageDistanceMetres = TotalDistanceMetres / TripCount
+                AverageDurationSeconds = (int)Math.Round((double)TotalDurationSeconds / TripCount, MidpointRounding.AwayFromZero),
+                AverageDistanceMetres = (int)Math.Round((double)TotalDistanceMetres / TripCount, MidpointRounding.AwayFromZero)
             };
     }
 
     private readonly record struct TripHistoryColumnIndexes(
+        int DepartureTime,
+        int ArrivalTime,
         int DepartureStationId,
         int ArrivalStationId,
         int DistanceMetres,
         int DurationSeconds);
 
     private readonly record struct TripHistoryJourney(
+        DateTime DepartureTime,
+        DateTime ArrivalTime,
         string DepartureStationId,
         string ArrivalStationId,
-        double DurationSeconds,
-        double DistanceMetres);
+        int DurationSeconds,
+        int DistanceMetres);
 }
