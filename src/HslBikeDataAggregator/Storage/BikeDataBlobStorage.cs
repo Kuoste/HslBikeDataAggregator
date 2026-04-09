@@ -2,7 +2,7 @@ using System.Text.Json;
 
 using Azure;
 using Azure.Storage.Blobs;
-
+using Azure.Storage.Blobs.Models;
 using HslBikeDataAggregator.Models;
 
 namespace HslBikeDataAggregator.Storage;
@@ -33,7 +33,7 @@ public sealed class BikeDataBlobStorage(BlobContainerClient blobContainerClient)
         await blobContainerClient.CreateIfNotExistsAsync(cancellationToken: cancellationToken);
 
         var stationIds = new List<string>();
-        await foreach (var blobItem in blobContainerClient.GetBlobsAsync(prefix: "destinations/", cancellationToken: cancellationToken))
+        await foreach (var blobItem in blobContainerClient.GetBlobsAsync(traits: BlobTraits.None, states: BlobStates.None, prefix: "destinations/", cancellationToken: cancellationToken))
         {
             const string prefix = "destinations/";
             const string suffix = ".json";
