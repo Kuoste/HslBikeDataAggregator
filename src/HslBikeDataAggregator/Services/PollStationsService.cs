@@ -51,6 +51,8 @@ public sealed class PollStationsService(
                 static station => station.Counts,
                 StringComparer.Ordinal);
 
+        var existingTimestampCount = existingTimeSeries.Timestamps.Count;
+
         var stationSeries = stations
             .OrderBy(static station => station.Id, StringComparer.Ordinal)
             .Select(station => new StationCountSeries
@@ -58,7 +60,11 @@ public sealed class PollStationsService(
                 StationId = station.Id,
                 Counts = existingStationCounts.TryGetValue(station.Id, out var existingCounts)
                     ? existingCounts.Append(station.BikesAvailable).TakeLast(snapshotHistoryLimit).ToArray()
-                    : [station.BikesAvailable]
+                    // Station has no history (new station, or prior empty-API run cleared all rows).
+                    // Backfill with -1 ("no data") so the count series length matches the timestamp
+                    // series length, which is required by the serialiser. The frontend treats -1 as
+                    // a missing observation rather than a genuine zero-bike reading.
+                    : Enumerable.Repeat(-1, existingTimestampCount).Append(station.BikesAvailable).TakeLast(snapshotHistoryLimit).ToArray()
             })
             .ToArray();
 

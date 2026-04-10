@@ -125,6 +125,171 @@ public sealed class PollStationsServiceTests
         Assert.Equal(2, result.SnapshotCount);
     }
 
+    [Fact]
+    public async Task PollAsync_NewStationBackfillsWithSentinel_WhenTimeSeriesAlreadyHasMultipleTimestamps()
+    {
+        var handler = new StubHttpMessageHandler(_ => Task.FromResult(new HttpResponseMessage(HttpStatusCode.OK)
+        {
+            Content = new StringContent(
+                """
+                {
+                  "data": {
+                    "vehicleRentalStations": [
+                      {
+                        "stationId": "smoove:001",
+                        "name": "Central Station",
+                        "lat": 60.1708,
+                        "lon": 24.941,
+                        "allowPickup": true,
+                        "allowDropoff": true,
+                        "capacity": 24,
+                        "availableVehicles": { "byType": [{ "count": 5 }] },
+                        "availableSpaces": { "byType": [{ "count": 3 }] }
+                      },
+                      {
+                        "stationId": "smoove:002",
+                        "name": "New Station",
+                        "lat": 60.172,
+                        "lon": 24.943,
+                        "allowPickup": true,
+                        "allowDropoff": true,
+                        "capacity": 10,
+                        "availableVehicles": { "byType": [{ "count": 4 }] },
+                        "availableSpaces": { "byType": [{ "count": 6 }] }
+                      }
+                    ]
+                  }
+                }
+                """,
+                Encoding.UTF8,
+                "application/json")
+        }));
+
+        var options = Options.Create(new PollStationsOptions
+        {
+            DigitransitSubscriptionKey = "test-key",
+            SnapshotHistoryLimit = 5
+        });
+        var digitransitStationClient = new DigitransitStationClient(new HttpClient(handler), options);
+        var blobStorage = new Mock<IBikeDataBlobStorage>();
+        blobStorage
+            .Setup(storage => storage.GetSnapshotTimeSeriesAsync(It.IsAny<CancellationToken>()))
+            .ReturnsAsync(new SnapshotTimeSeries
+            {
+                IntervalMinutes = 5,
+                Timestamps =
+                [
+                    new DateTimeOffset(2026, 4, 3, 10, 0, 0, TimeSpan.Zero),
+                    new DateTimeOffset(2026, 4, 3, 10, 5, 0, TimeSpan.Zero)
+                ],
+                Stations =
+                [
+                    new StationCountSeries { StationId = "smoove:001", Counts = [3, 4] }
+                ]
+            });
+
+        SnapshotTimeSeries? writtenSnapshots = null;
+        blobStorage
+            .Setup(storage => storage.WriteSnapshotTimeSeriesAsync(It.IsAny<SnapshotTimeSeries>(), It.IsAny<CancellationToken>()))
+            .Callback<SnapshotTimeSeries, CancellationToken>((snapshots, _) => writtenSnapshots = snapshots)
+            .Returns(Task.CompletedTask);
+
+        var timestamp = new DateTimeOffset(2026, 4, 3, 10, 10, 0, TimeSpan.Zero);
+        var service = new PollStationsService(
+            digitransitStationClient,
+            blobStorage.Object,
+            options,
+            new FixedTimeProvider(timestamp),
+            NullLogger<PollStationsService>.Instance);
+
+        await service.PollAsync(TestContext.Current.CancellationToken);
+
+        Assert.NotNull(writtenSnapshots);
+        Assert.Equal(3, writtenSnapshots!.Timestamps.Count);
+        Assert.Equal(2, writtenSnapshots.Stations.Count);
+
+        var station001 = writtenSnapshots.Stations.Single(s => s.StationId == "smoove:001");
+        Assert.Equal([3, 4, 5], station001.Counts);
+
+        var station002 = writtenSnapshots.Stations.Single(s => s.StationId == "smoove:002");
+        Assert.Equal([-1, -1, 4], station002.Counts);
+    }
+
+    [Fact]
+    public async Task PollAsync_RecoverFromEmptyRows_BackfillsAllStationsWithSentinel()
+    {
+        var handler = new StubHttpMessageHandler(_ => Task.FromResult(new HttpResponseMessage(HttpStatusCode.OK)
+        {
+            Content = new StringContent(
+                """
+                {
+                  "data": {
+                    "vehicleRentalStations": [
+                      {
+                        "stationId": "smoove:001",
+                        "name": "Central Station",
+                        "lat": 60.1708,
+                        "lon": 24.941,
+                        "allowPickup": true,
+                        "allowDropoff": true,
+                        "capacity": 24,
+                        "availableVehicles": { "byType": [{ "count": 7 }] },
+                        "availableSpaces": { "byType": [{ "count": 5 }] }
+                      }
+                    ]
+                  }
+                }
+                """,
+                Encoding.UTF8,
+                "application/json")
+        }));
+
+        var options = Options.Create(new PollStationsOptions
+        {
+            DigitransitSubscriptionKey = "test-key",
+            SnapshotHistoryLimit = 5
+        });
+        var digitransitStationClient = new DigitransitStationClient(new HttpClient(handler), options);
+        var blobStorage = new Mock<IBikeDataBlobStorage>();
+
+        // Simulate the broken blob state: timestamps present but rows empty
+        blobStorage
+            .Setup(storage => storage.GetSnapshotTimeSeriesAsync(It.IsAny<CancellationToken>()))
+            .ReturnsAsync(new SnapshotTimeSeries
+            {
+                IntervalMinutes = 5,
+                Timestamps =
+                [
+                    new DateTimeOffset(2026, 4, 3, 10, 0, 0, TimeSpan.Zero),
+                    new DateTimeOffset(2026, 4, 3, 10, 5, 0, TimeSpan.Zero)
+                ],
+                Stations = []
+            });
+
+        SnapshotTimeSeries? writtenSnapshots = null;
+        blobStorage
+            .Setup(storage => storage.WriteSnapshotTimeSeriesAsync(It.IsAny<SnapshotTimeSeries>(), It.IsAny<CancellationToken>()))
+            .Callback<SnapshotTimeSeries, CancellationToken>((snapshots, _) => writtenSnapshots = snapshots)
+            .Returns(Task.CompletedTask);
+
+        var timestamp = new DateTimeOffset(2026, 4, 3, 10, 10, 0, TimeSpan.Zero);
+        var service = new PollStationsService(
+            digitransitStationClient,
+            blobStorage.Object,
+            options,
+            new FixedTimeProvider(timestamp),
+            NullLogger<PollStationsService>.Instance);
+
+        await service.PollAsync(TestContext.Current.CancellationToken);
+
+        Assert.NotNull(writtenSnapshots);
+        Assert.Equal(3, writtenSnapshots!.Timestamps.Count);
+
+        var station001 = Assert.Single(writtenSnapshots.Stations);
+        Assert.Equal("smoove:001", station001.StationId);
+        Assert.Equal([-1, -1, 7], station001.Counts);
+    }
+
     private sealed class StubHttpMessageHandler(Func<HttpRequestMessage, Task<HttpResponseMessage>> handler) : HttpMessageHandler
     {
         protected override Task<HttpResponseMessage> SendAsync(HttpRequestMessage request, CancellationToken cancellationToken)
