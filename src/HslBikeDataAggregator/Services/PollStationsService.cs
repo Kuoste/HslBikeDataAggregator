@@ -16,7 +16,38 @@ public sealed class PollStationsService(
 {
     public async Task<PollStationsResult> PollAsync(CancellationToken cancellationToken)
     {
-        var stations = await digitransitStationClient.FetchStationsAsync(cancellationToken);
+        var retryCount = Math.Max(0, options.Value.EmptyResponseRetryCount);
+        var retryDelay = TimeSpan.FromSeconds(Math.Max(1, options.Value.EmptyResponseRetryDelaySeconds));
+
+        IReadOnlyList<BikeStation> stations = [];
+
+        for (var attempt = 0; attempt <= retryCount; attempt++)
+        {
+            stations = await digitransitStationClient.FetchStationsAsync(cancellationToken);
+
+            if (stations.Count > 0)
+            {
+                break;
+            }
+
+            if (attempt < retryCount)
+            {
+                logger.LogWarning(
+                    "Digitransit API returned no stations (attempt {Attempt}/{MaxAttempts}); retrying in {Delay}s.",
+                    attempt + 1,
+                    retryCount + 1,
+                    retryDelay.TotalSeconds);
+
+                await Task.Delay(retryDelay, timeProvider, cancellationToken);
+            }
+        }
+
+        if (stations.Count == 0)
+        {
+            logger.LogWarning("Digitransit API returned no stations after {MaxAttempts} attempts; skipping snapshot write to avoid corrupting the time series.", retryCount + 1);
+            return new PollStationsResult(timeProvider.GetUtcNow(), 0, 0);
+        }
+
         var timestamp = timeProvider.GetUtcNow();
         var snapshotHistoryLimit = Math.Max(1, options.Value.SnapshotHistoryLimit);
         var existingTimeSeries = await bikeDataBlobStorage.GetSnapshotTimeSeriesAsync(cancellationToken) ?? SnapshotTimeSeries.Empty;

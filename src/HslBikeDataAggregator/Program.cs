@@ -20,6 +20,8 @@ builder.Services
     {
         options.DigitransitSubscriptionKey = configuration["DigitransitSubscriptionKey"] ?? string.Empty;
         options.SnapshotHistoryLimit = configuration.GetValue<int?>("SnapshotHistoryLimit") ?? 60;
+        options.EmptyResponseRetryCount = configuration.GetValue<int?>("EmptyResponseRetryCount") ?? 3;
+        options.EmptyResponseRetryDelaySeconds = configuration.GetValue<int?>("EmptyResponseRetryDelaySeconds") ?? 5;
     });
 
 builder.Services
@@ -35,7 +37,8 @@ builder.Services
             options.RollingWindowMonthCount);
     });
 
-builder.Services.AddHttpClient<DigitransitStationClient>();
+builder.Services.AddHttpClient<DigitransitStationClient>()
+    .AddStandardResilienceHandler();
 builder.Services.AddHttpClient<ProcessStationHistoryService>();
 builder.Services.AddSingleton(TimeProvider.System);
 builder.Services.AddSingleton<LiveStationCacheService>();
