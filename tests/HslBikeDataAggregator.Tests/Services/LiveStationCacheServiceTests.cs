@@ -67,6 +67,37 @@ public sealed class LiveStationCacheServiceTests
         Assert.Equal(6, station.BikesAvailable);
     }
 
+    [Fact]
+    public async Task GetStationsAsync_DoesNotCacheEmptyResponse_SoNextRequestRetries()
+    {
+        var responses = new Queue<string>([
+            """{"data":{"vehicleRentalStations":[]}}""",
+            CreateStationsResponse("Central Station", 5)
+        ]);
+
+        var requestCount = 0;
+        var handler = new StubHttpMessageHandler(_ =>
+        {
+            requestCount++;
+            return Task.FromResult(new HttpResponseMessage(HttpStatusCode.OK)
+            {
+                Content = new StringContent(responses.Dequeue(), Encoding.UTF8, "application/json")
+            });
+        });
+
+        var timeProvider = new MutableTimeProvider(new DateTimeOffset(2026, 4, 6, 10, 0, 0, TimeSpan.Zero));
+        var service = CreateService(handler, timeProvider);
+
+        var empty = await service.GetStationsAsync(TestContext.Current.CancellationToken);
+        // Time does not advance — the second call must retry despite being within the normal cache window.
+        var populated = await service.GetStationsAsync(TestContext.Current.CancellationToken);
+
+        Assert.Equal(2, requestCount);
+        Assert.Empty(empty);
+        var station = Assert.Single(populated);
+        Assert.Equal("Central Station", station.Name);
+    }
+
     private static LiveStationCacheService CreateService(HttpMessageHandler handler, TimeProvider timeProvider)
     {
         var client = new DigitransitStationClient(

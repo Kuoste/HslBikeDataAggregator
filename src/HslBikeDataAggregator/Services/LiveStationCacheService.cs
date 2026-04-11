@@ -34,6 +34,13 @@ public sealed class LiveStationCacheService(
             }
 
             stations = await digitransitStationClient.FetchStationsAsync(cancellationToken);
+
+            if (stations.Count == 0)
+            {
+                logger.LogWarning("Digitransit API returned no stations; skipping cache write so the next request retries immediately.");
+                return stations;
+            }
+
             cachedStations = new CachedStations(stations, currentTime + CacheLifetime);
             logger.LogInformation("Fetched {StationCount} live stations from Digitransit and cached them until {ExpiresAt}.", stations.Count, cachedStations.ExpiresAt);
             return stations;
