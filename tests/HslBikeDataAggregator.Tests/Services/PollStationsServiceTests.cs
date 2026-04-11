@@ -290,6 +290,160 @@ public sealed class PollStationsServiceTests
         Assert.Equal([-1, -1, 7], station001.Counts);
     }
 
+    [Fact]
+    public async Task PollAsync_DoesNotWriteBlob_WhenApiReturnsNoStations()
+    {
+        var handler = new StubHttpMessageHandler(_ => Task.FromResult(new HttpResponseMessage(HttpStatusCode.OK)
+        {
+            Content = new StringContent(
+                """{"data":{"vehicleRentalStations":[]}}""",
+                Encoding.UTF8,
+                "application/json")
+        }));
+
+        var options = Options.Create(new PollStationsOptions
+        {
+            DigitransitSubscriptionKey = "test-key",
+            SnapshotHistoryLimit = 5,
+            EmptyResponseRetryCount = 0
+        });
+        var digitransitStationClient = new DigitransitStationClient(new HttpClient(handler), options);
+        var blobStorage = new Mock<IBikeDataBlobStorage>();
+        blobStorage
+            .Setup(storage => storage.GetSnapshotTimeSeriesAsync(It.IsAny<CancellationToken>()))
+            .ReturnsAsync(SnapshotTimeSeries.Empty);
+
+        var timestamp = new DateTimeOffset(2026, 4, 3, 10, 10, 0, TimeSpan.Zero);
+        var service = new PollStationsService(
+            digitransitStationClient,
+            blobStorage.Object,
+            options,
+            new FixedTimeProvider(timestamp),
+            NullLogger<PollStationsService>.Instance);
+
+        var result = await service.PollAsync(TestContext.Current.CancellationToken);
+
+        blobStorage.Verify(
+            storage => storage.WriteSnapshotTimeSeriesAsync(It.IsAny<SnapshotTimeSeries>(), It.IsAny<CancellationToken>()),
+            Times.Never);
+        Assert.Equal(0, result.StationCount);
+        Assert.Equal(0, result.SnapshotCount);
+    }
+
+    [Fact]
+    public async Task PollAsync_RetriesAndSucceeds_WhenApiReturnsEmptyThenValidData()
+    {
+        var callCount = 0;
+        var handler = new StubHttpMessageHandler(_ =>
+        {
+            callCount++;
+            var json = callCount < 3
+                ? """{ "data": { "vehicleRentalStations": [] } }"""
+                : """
+                  {
+                    "data": {
+                      "vehicleRentalStations": [
+                        {
+                          "stationId": "smoove:001",
+                          "name": "Central Station",
+                          "lat": 60.17,
+                          "lon": 24.94,
+                          "allowPickup": true,
+                          "allowDropoff": true,
+                          "capacity": 24,
+                          "availableVehicles": { "byType": [{ "count": 5 }] },
+                          "availableSpaces": { "byType": [{ "count": 3 }] }
+                        }
+                      ]
+                    }
+                  }
+                  """;
+            return Task.FromResult(new HttpResponseMessage(HttpStatusCode.OK)
+            {
+                Content = new StringContent(json, Encoding.UTF8, "application/json")
+            });
+        });
+
+        var options = Options.Create(new PollStationsOptions
+        {
+            DigitransitSubscriptionKey = "test-key",
+            SnapshotHistoryLimit = 5,
+            EmptyResponseRetryCount = 3,
+            EmptyResponseRetryDelaySeconds = 1
+        });
+        var digitransitStationClient = new DigitransitStationClient(new HttpClient(handler), options);
+        var blobStorage = new Mock<IBikeDataBlobStorage>();
+        blobStorage
+            .Setup(storage => storage.GetSnapshotTimeSeriesAsync(It.IsAny<CancellationToken>()))
+            .ReturnsAsync(SnapshotTimeSeries.Empty);
+        blobStorage
+            .Setup(storage => storage.WriteSnapshotTimeSeriesAsync(It.IsAny<SnapshotTimeSeries>(), It.IsAny<CancellationToken>()))
+            .Returns(Task.CompletedTask);
+
+        var timestamp = new DateTimeOffset(2026, 4, 3, 10, 10, 0, TimeSpan.Zero);
+        var service = new PollStationsService(
+            digitransitStationClient,
+            blobStorage.Object,
+            options,
+            new FixedTimeProvider(timestamp),
+            NullLogger<PollStationsService>.Instance);
+
+        var result = await service.PollAsync(TestContext.Current.CancellationToken);
+
+        Assert.Equal(3, callCount);
+        Assert.Equal(1, result.StationCount);
+        blobStorage.Verify(
+            storage => storage.WriteSnapshotTimeSeriesAsync(It.IsAny<SnapshotTimeSeries>(), It.IsAny<CancellationToken>()),
+            Times.Once);
+    }
+
+    [Fact]
+    public async Task PollAsync_SkipsWrite_WhenAllRetriesExhausted()
+    {
+        var callCount = 0;
+        var handler = new StubHttpMessageHandler(_ =>
+        {
+            callCount++;
+            return Task.FromResult(new HttpResponseMessage(HttpStatusCode.OK)
+            {
+                Content = new StringContent(
+                    """{ "data": { "vehicleRentalStations": [] } }""",
+                    Encoding.UTF8,
+                    "application/json")
+            });
+        });
+
+        var options = Options.Create(new PollStationsOptions
+        {
+            DigitransitSubscriptionKey = "test-key",
+            SnapshotHistoryLimit = 5,
+            EmptyResponseRetryCount = 2,
+            EmptyResponseRetryDelaySeconds = 1
+        });
+        var digitransitStationClient = new DigitransitStationClient(new HttpClient(handler), options);
+        var blobStorage = new Mock<IBikeDataBlobStorage>();
+        blobStorage
+            .Setup(storage => storage.GetSnapshotTimeSeriesAsync(It.IsAny<CancellationToken>()))
+            .ReturnsAsync(SnapshotTimeSeries.Empty);
+
+        var timestamp = new DateTimeOffset(2026, 4, 3, 10, 10, 0, TimeSpan.Zero);
+        var service = new PollStationsService(
+            digitransitStationClient,
+            blobStorage.Object,
+            options,
+            new FixedTimeProvider(timestamp),
+            NullLogger<PollStationsService>.Instance);
+
+        var result = await service.PollAsync(TestContext.Current.CancellationToken);
+
+        Assert.Equal(3, callCount); // 1 initial + 2 retries
+        Assert.Equal(0, result.StationCount);
+        Assert.Equal(0, result.SnapshotCount);
+        blobStorage.Verify(
+            storage => storage.WriteSnapshotTimeSeriesAsync(It.IsAny<SnapshotTimeSeries>(), It.IsAny<CancellationToken>()),
+            Times.Never);
+    }
+
     private sealed class StubHttpMessageHandler(Func<HttpRequestMessage, Task<HttpResponseMessage>> handler) : HttpMessageHandler
     {
         protected override Task<HttpResponseMessage> SendAsync(HttpRequestMessage request, CancellationToken cancellationToken)
@@ -299,5 +453,19 @@ public sealed class PollStationsServiceTests
     private sealed class FixedTimeProvider(DateTimeOffset timestamp) : TimeProvider
     {
         public override DateTimeOffset GetUtcNow() => timestamp;
+
+        public override ITimer CreateTimer(TimerCallback callback, object? state, TimeSpan dueTime, TimeSpan period)
+        {
+            // Fire the callback immediately so Task.Delay completes without waiting.
+            callback(state);
+            return new NoOpTimer();
+        }
+
+        private sealed class NoOpTimer : ITimer
+        {
+            public bool Change(TimeSpan dueTime, TimeSpan period) => false;
+            public void Dispose() { }
+            public ValueTask DisposeAsync() => default;
+        }
     }
 }
