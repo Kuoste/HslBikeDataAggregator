@@ -15,9 +15,9 @@
       "value": [
         "https://kuoste.github.io",
         "https://tmikuoste.github.io",
-        "http://localhost:5000"
+        "http://localhost:5291"
       ]
-    }
+    },
     "pollIntervalCron": {
       "value": "0 */15 * * * *"
     },
