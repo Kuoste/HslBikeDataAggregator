@@ -20,8 +20,6 @@ builder.Services
     {
         options.DigitransitSubscriptionKey = configuration["DigitransitSubscriptionKey"] ?? string.Empty;
         options.SnapshotHistoryLimit = configuration.GetValue<int?>("SnapshotHistoryLimit") ?? 60;
-        options.EmptyResponseRetryCount = configuration.GetValue<int?>("EmptyResponseRetryCount") ?? 3;
-        options.EmptyResponseRetryDelaySeconds = configuration.GetValue<int?>("EmptyResponseRetryDelaySeconds") ?? 5;
     });
 
 builder.Services
