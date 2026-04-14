@@ -6,7 +6,7 @@ param apimServiceName = 'apim-hsl-bike-data-aggregator-dev'
 param corsAllowedOrigins = [
   'https://kuoste.github.io'
   'https://tmikuoste.github.io'
-  'http://localhost:5000'
+  'http://localhost:5291'
 ]
 param pollIntervalCron = '0 */15 * * * *'
 param snapshotHistoryLimit = 60
