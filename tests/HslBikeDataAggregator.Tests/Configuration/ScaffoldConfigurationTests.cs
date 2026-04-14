@@ -32,7 +32,8 @@ public sealed class ScaffoldConfigurationTests
             .GetString();
 
         Assert.Contains("https://kuoste.github.io", corsOrigin);
-        Assert.Contains("http://localhost:5000", corsOrigin);
+        Assert.Contains("https://tmikuoste.github.io", corsOrigin);
+        Assert.Contains("http://localhost:5291", corsOrigin);
     }
 
     [Fact]

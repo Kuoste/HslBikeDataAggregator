@@ -14,9 +14,10 @@
     "corsAllowedOrigins": {
       "value": [
         "https://kuoste.github.io",
+        "https://tmikuoste.github.io",
         "http://localhost:5000"
       ]
-    },
+    }
     "pollIntervalCron": {
       "value": "0 */15 * * * *"
     },

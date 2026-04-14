@@ -353,6 +353,7 @@ resource apimApiPolicy 'Microsoft.ApiManagement/service/apis/policies@2024-05-01
     <cors allow-credentials="false">
       <allowed-origins>
         <origin>https://kuoste.github.io</origin>
+        <origin>https://tmikuoste.github.io</origin>
       </allowed-origins>
       <allowed-methods>
         <method>GET</method>
