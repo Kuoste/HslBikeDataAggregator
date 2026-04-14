@@ -150,12 +150,12 @@ public sealed class DeploymentWorkflowConfigurationTests
         Assert.Contains("allowedOrigins: corsAllowedOrigins", mainBicep, StringComparison.Ordinal);
 
         Assert.Contains("\"corsAllowedOrigins\"", devJson, StringComparison.Ordinal);
-        Assert.Contains("http://localhost:5000", devJson, StringComparison.Ordinal);
+        Assert.Contains("http://localhost:5291", devJson, StringComparison.Ordinal);
         Assert.Contains("\"corsAllowedOrigins\"", prodJson, StringComparison.Ordinal);
         Assert.DoesNotContain("localhost", prodJson, StringComparison.Ordinal);
 
         Assert.Contains("param corsAllowedOrigins", devBicepParameters, StringComparison.Ordinal);
-        Assert.Contains("http://localhost:5000", devBicepParameters, StringComparison.Ordinal);
+        Assert.Contains("http://localhost:5291", devBicepParameters, StringComparison.Ordinal);
         Assert.Contains("param corsAllowedOrigins", prodBicepParameters, StringComparison.Ordinal);
         Assert.DoesNotContain("localhost", prodBicepParameters, StringComparison.Ordinal);
     }
