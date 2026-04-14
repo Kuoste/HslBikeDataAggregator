@@ -5,7 +5,7 @@
     "_generator": {
       "name": "bicep",
       "version": "0.42.1.51946",
-      "templateHash": "8435272939348383580"
+      "templateHash": "12666906528667991272"
     }
   },
   "parameters": {
@@ -403,7 +403,7 @@
       "name": "[format('{0}/{1}/{2}', parameters('apimServiceName'), 'hsl-bike-api', 'policy')]",
       "properties": {
         "format": "xml",
-        "value": "<policies>\r\n  <inbound>\r\n    <base />\r\n    <set-header name=\"x-functions-key\" exists-action=\"override\">\r\n      <value>{{function-host-key}}</value>\r\n    </set-header>\r\n    <cors allow-credentials=\"false\">\r\n      <allowed-origins>\r\n        <origin>https://kuoste.github.io</origin>\r\n      </allowed-origins>\r\n      <allowed-methods>\r\n        <method>GET</method>\r\n      </allowed-methods>\r\n      <allowed-headers>\r\n        <header>*</header>\r\n      </allowed-headers>\r\n    </cors>\r\n    <rate-limit calls=\"200\" renewal-period=\"60\" />\r\n    <cache-lookup vary-by-developer=\"false\" vary-by-developer-groups=\"false\" />\r\n  </inbound>\r\n  <backend>\r\n    <base />\r\n  </backend>\r\n  <outbound>\r\n    <base />\r\n    <cache-store duration=\"30\" />\r\n  </outbound>\r\n  <on-error>\r\n    <base />\r\n  </on-error>\r\n</policies>\r\n"
+        "value": "<policies>\r\n  <inbound>\r\n    <base />\r\n    <set-header name=\"x-functions-key\" exists-action=\"override\">\r\n      <value>{{function-host-key}}</value>\r\n    </set-header>\r\n    <cors allow-credentials=\"false\">\r\n      <allowed-origins>\r\n        <origin>https://kuoste.github.io</origin>\r\n        <origin>https://tmikuoste.github.io</origin>\r\n      </allowed-origins>\r\n      <allowed-methods>\r\n        <method>GET</method>\r\n      </allowed-methods>\r\n      <allowed-headers>\r\n        <header>*</header>\r\n      </allowed-headers>\r\n    </cors>\r\n    <rate-limit calls=\"200\" renewal-period=\"60\" />\r\n    <cache-lookup vary-by-developer=\"false\" vary-by-developer-groups=\"false\" />\r\n  </inbound>\r\n  <backend>\r\n    <base />\r\n  </backend>\r\n  <outbound>\r\n    <base />\r\n    <cache-store duration=\"30\" />\r\n  </outbound>\r\n  <on-error>\r\n    <base />\r\n  </on-error>\r\n</policies>\r\n"
       },
       "dependsOn": [
         "[resourceId('Microsoft.ApiManagement/service/apis', parameters('apimServiceName'), 'hsl-bike-api')]",
