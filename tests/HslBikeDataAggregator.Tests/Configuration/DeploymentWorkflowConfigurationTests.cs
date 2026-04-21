@@ -32,7 +32,7 @@ public sealed class DeploymentWorkflowConfigurationTests
         var yaml = await File.ReadAllTextAsync(GetRepositoryFilePath(".github", "workflows", "deploy-dev.yml"), cancellationToken);
 
         Assert.Contains("environment: dev", yaml, StringComparison.Ordinal);
-        Assert.Contains("@infra/dev.json", yaml, StringComparison.Ordinal);
+        Assert.Contains("--parameters infra/dev.bicepparam", yaml, StringComparison.Ordinal);
     }
 
     [Fact]
@@ -42,7 +42,7 @@ public sealed class DeploymentWorkflowConfigurationTests
         var yaml = await File.ReadAllTextAsync(GetRepositoryFilePath(".github", "workflows", "deploy-prod.yml"), cancellationToken);
 
         Assert.Contains("environment: prod", yaml, StringComparison.Ordinal);
-        Assert.Contains("@infra/prod.json", yaml, StringComparison.Ordinal);
+        Assert.Contains("--parameters infra/prod.bicepparam", yaml, StringComparison.Ordinal);
     }
 
     [Fact]
@@ -87,15 +87,11 @@ public sealed class DeploymentWorkflowConfigurationTests
     {
         var cancellationToken = TestContext.Current.CancellationToken;
         var mainBicep = await File.ReadAllTextAsync(GetRepositoryFilePath("infra", "main.bicep"), cancellationToken);
-        var devJson = await File.ReadAllTextAsync(GetRepositoryFilePath("infra", "dev.json"), cancellationToken);
-        var prodJson = await File.ReadAllTextAsync(GetRepositoryFilePath("infra", "prod.json"), cancellationToken);
         var devBicepParameters = await File.ReadAllTextAsync(GetRepositoryFilePath("infra", "dev.bicepparam"), cancellationToken);
         var prodBicepParameters = await File.ReadAllTextAsync(GetRepositoryFilePath("infra", "prod.bicepparam"), cancellationToken);
 
         Assert.Contains("param historyProcessingCron string", mainBicep, StringComparison.Ordinal);
         Assert.Contains("name: 'HistoryProcessingCron'", mainBicep, StringComparison.Ordinal);
-        Assert.Contains("\"historyProcessingCron\"", devJson, StringComparison.Ordinal);
-        Assert.Contains("\"historyProcessingCron\"", prodJson, StringComparison.Ordinal);
         Assert.Contains("param historyProcessingCron = '0 0 2 * * *'", devBicepParameters, StringComparison.Ordinal);
         Assert.Contains("param historyProcessingCron = '0 0 2 * * *'", prodBicepParameters, StringComparison.Ordinal);
     }
@@ -105,16 +101,10 @@ public sealed class DeploymentWorkflowConfigurationTests
     {
         var cancellationToken = TestContext.Current.CancellationToken;
         var mainBicep = await File.ReadAllTextAsync(GetRepositoryFilePath("infra", "main.bicep"), cancellationToken);
-        var devJson = await File.ReadAllTextAsync(GetRepositoryFilePath("infra", "dev.json"), cancellationToken);
-        var prodJson = await File.ReadAllTextAsync(GetRepositoryFilePath("infra", "prod.json"), cancellationToken);
         var devBicepParameters = await File.ReadAllTextAsync(GetRepositoryFilePath("infra", "dev.bicepparam"), cancellationToken);
         var prodBicepParameters = await File.ReadAllTextAsync(GetRepositoryFilePath("infra", "prod.bicepparam"), cancellationToken);
 
         Assert.Contains("param pollIntervalCron string = '0 */15 * * * *'", mainBicep, StringComparison.Ordinal);
-        Assert.Contains("\"pollIntervalCron\"", devJson, StringComparison.Ordinal);
-        Assert.Contains("\"pollIntervalCron\"", prodJson, StringComparison.Ordinal);
-        Assert.Contains("\"0 */15 * * * *\"", devJson, StringComparison.Ordinal);
-        Assert.Contains("\"0 */15 * * * *\"", prodJson, StringComparison.Ordinal);
         Assert.Contains("param pollIntervalCron = '0 */15 * * * *'", devBicepParameters, StringComparison.Ordinal);
         Assert.Contains("param pollIntervalCron = '0 */15 * * * *'", prodBicepParameters, StringComparison.Ordinal);
     }
@@ -141,18 +131,13 @@ public sealed class DeploymentWorkflowConfigurationTests
     {
         var cancellationToken = TestContext.Current.CancellationToken;
         var mainBicep = await File.ReadAllTextAsync(GetRepositoryFilePath("infra", "main.bicep"), cancellationToken);
-        var devJson = await File.ReadAllTextAsync(GetRepositoryFilePath("infra", "dev.json"), cancellationToken);
-        var prodJson = await File.ReadAllTextAsync(GetRepositoryFilePath("infra", "prod.json"), cancellationToken);
         var devBicepParameters = await File.ReadAllTextAsync(GetRepositoryFilePath("infra", "dev.bicepparam"), cancellationToken);
         var prodBicepParameters = await File.ReadAllTextAsync(GetRepositoryFilePath("infra", "prod.bicepparam"), cancellationToken);
 
         Assert.Contains("param corsAllowedOrigins array", mainBicep, StringComparison.Ordinal);
-        Assert.Contains("allowedOrigins: corsAllowedOrigins", mainBicep, StringComparison.Ordinal);
-
-        Assert.Contains("\"corsAllowedOrigins\"", devJson, StringComparison.Ordinal);
-        Assert.Contains("http://localhost:5291", devJson, StringComparison.Ordinal);
-        Assert.Contains("\"corsAllowedOrigins\"", prodJson, StringComparison.Ordinal);
-        Assert.DoesNotContain("localhost", prodJson, StringComparison.Ordinal);
+        Assert.Contains("var apimCorsAllowedOriginsXml = join(map(corsAllowedOrigins", mainBicep, StringComparison.Ordinal);
+        Assert.Contains("${apimCorsAllowedOriginsXml}", mainBicep, StringComparison.Ordinal);
+        Assert.DoesNotContain("allowedOrigins: corsAllowedOrigins", mainBicep, StringComparison.Ordinal);
 
         Assert.Contains("param corsAllowedOrigins", devBicepParameters, StringComparison.Ordinal);
         Assert.Contains("http://localhost:5291", devBicepParameters, StringComparison.Ordinal);

@@ -18,10 +18,8 @@ param functionAppName string
 @minLength(2)
 param apimServiceName string
 
-@description('Frontend origins allowed by Azure Functions CORS configuration.')
-param corsAllowedOrigins array = [
-  'https://kuoste.github.io'
-]
+@description('Frontend origins allowed by the API Management CORS policy.')
+param corsAllowedOrigins array
 
 @description('Cron expression used by the PollStations timer trigger.')
 param pollIntervalCron string = '0 */15 * * * *'
@@ -40,6 +38,7 @@ var logAnalyticsWorkspaceName = '${functionAppName}-law'
 var storageAccountName = take('st${toLower(replace(replace(functionAppName, '-', ''), '_', ''))}${uniqueString(resourceGroup().id)}', 24)
 var deploymentStorageContainerName = 'deployment-packages'
 var deploymentStorageContainerUrl = 'https://${storageAccount.name}.blob.${environment().suffixes.storage}/${deploymentStorageContainerName}'
+var apimCorsAllowedOriginsXml = join(map(corsAllowedOrigins, origin => '        <origin>${origin}</origin>'), '\n')
 
 resource managedIdentity 'Microsoft.ManagedIdentity/userAssignedIdentities@2023-01-31' = {
   name: managedIdentityName
@@ -209,10 +208,6 @@ resource functionApp 'Microsoft.Web/sites@2024-04-01' = {
           value: historyProcessingCron
         }
       ]
-      cors: {
-        allowedOrigins: corsAllowedOrigins
-        supportCredentials: false
-      }
       ftpsState: 'Disabled'
       http20Enabled: true
       minTlsVersion: '1.2'
@@ -360,8 +355,7 @@ resource apimApiPolicy 'Microsoft.ApiManagement/service/apis/policies@2024-05-01
     </set-header>
     <cors allow-credentials="false">
       <allowed-origins>
-        <origin>https://kuoste.github.io</origin>
-        <origin>https://tmikuoste.github.io</origin>
+${apimCorsAllowedOriginsXml}
       </allowed-origins>
       <allowed-methods>
         <method>GET</method>

@@ -6,9 +6,5 @@
     "DigitransitSubscriptionKey": "",
     "PollIntervalCron": "0 */15 * * * *",
     "SnapshotHistoryLimit": "60"
-  },
-  "Host": {
-    "CORS": "https://kuoste.github.io,https://tmikuoste.github.io,http://localhost:5291",
-    "CORSCredentials": false
   }
 }
