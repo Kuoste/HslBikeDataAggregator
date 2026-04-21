@@ -122,7 +122,7 @@ jobs:
               --settings HistoryProcessingCron="${{ vars.HISTORY_PROCESSING_CRON || '0 0 2 * * *' }}"
 
       - name: Deploy Function App package
-        uses: Azure/functions-action@ac2abfb0e49d12ed5d273a3cb39f01bdd1654c43 # v1
+        uses: Azure/functions-action@bc63708cc6539760eea18d8a7de4ce8ef5fdf593 # v1
         with:
           app-name: ${{ env.AZURE_FUNCTION_APP_NAME }}
           package: ./artifacts/released-package.zip
