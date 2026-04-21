@@ -87,7 +87,7 @@ jobs:
             az deployment group create \
               --resource-group "$AZURE_RESOURCE_GROUP" \
               --template-file infra/main.bicep \
-              --parameters @infra/dev.json \
+              --parameters infra/dev.bicepparam \
               functionAppName="$AZURE_FUNCTION_APP_NAME" \
               location="$AZURE_LOCATION"
 

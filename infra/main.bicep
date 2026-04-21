@@ -18,10 +18,8 @@ param functionAppName string
 @minLength(2)
 param apimServiceName string
 
-@description('Frontend origins allowed by Azure Functions CORS configuration.')
-param corsAllowedOrigins array = [
-  'https://kuoste.github.io'
-]
+@description('Frontend origins allowed by the API Management CORS policy.')
+param corsAllowedOrigins array
 
 @description('Cron expression used by the PollStations timer trigger.')
 param pollIntervalCron string = '0 */15 * * * *'
@@ -40,6 +38,40 @@ var logAnalyticsWorkspaceName = '${functionAppName}-law'
 var storageAccountName = take('st${toLower(replace(replace(functionAppName, '-', ''), '_', ''))}${uniqueString(resourceGroup().id)}', 24)
 var deploymentStorageContainerName = 'deployment-packages'
 var deploymentStorageContainerUrl = 'https://${storageAccount.name}.blob.${environment().suffixes.storage}/${deploymentStorageContainerName}'
+var apimCorsAllowedOriginsXml = join(map(corsAllowedOrigins, origin => '        <origin>${origin}</origin>'), '\n')
+var apimApiPolicyTemplate = '''
+<policies>
+  <inbound>
+    <base />
+    <set-header name="x-functions-key" exists-action="override">
+      <value>{{function-host-key}}</value>
+    </set-header>
+    <cors allow-credentials="false">
+      <allowed-origins>
+__APIM_CORS_ALLOWED_ORIGINS__
+      </allowed-origins>
+      <allowed-methods>
+        <method>GET</method>
+      </allowed-methods>
+      <allowed-headers>
+        <header>*</header>
+      </allowed-headers>
+    </cors>
+    <rate-limit calls="200" renewal-period="60" />
+    <cache-lookup vary-by-developer="false" vary-by-developer-groups="false" />
+  </inbound>
+  <backend>
+    <base />
+  </backend>
+  <outbound>
+    <base />
+    <cache-store duration="30" />
+  </outbound>
+  <on-error>
+    <base />
+  </on-error>
+</policies>
+'''
 
 resource managedIdentity 'Microsoft.ManagedIdentity/userAssignedIdentities@2023-01-31' = {
   name: managedIdentityName
@@ -209,10 +241,6 @@ resource functionApp 'Microsoft.Web/sites@2024-04-01' = {
           value: historyProcessingCron
         }
       ]
-      cors: {
-        allowedOrigins: corsAllowedOrigins
-        supportCredentials: false
-      }
       ftpsState: 'Disabled'
       http20Enabled: true
       minTlsVersion: '1.2'
@@ -351,40 +379,7 @@ resource apimApiPolicy 'Microsoft.ApiManagement/service/apis/policies@2024-05-01
   parent: apimApi
   properties: {
     format: 'xml'
-    value: '''
-<policies>
-  <inbound>
-    <base />
-    <set-header name="x-functions-key" exists-action="override">
-      <value>{{function-host-key}}</value>
-    </set-header>
-    <cors allow-credentials="false">
-      <allowed-origins>
-        <origin>https://kuoste.github.io</origin>
-        <origin>https://tmikuoste.github.io</origin>
-      </allowed-origins>
-      <allowed-methods>
-        <method>GET</method>
-      </allowed-methods>
-      <allowed-headers>
-        <header>*</header>
-      </allowed-headers>
-    </cors>
-    <rate-limit calls="200" renewal-period="60" />
-    <cache-lookup vary-by-developer="false" vary-by-developer-groups="false" />
-  </inbound>
-  <backend>
-    <base />
-  </backend>
-  <outbound>
-    <base />
-    <cache-store duration="30" />
-  </outbound>
-  <on-error>
-    <base />
-  </on-error>
-</policies>
-'''
+    value: replace(apimApiPolicyTemplate, '__APIM_CORS_ALLOWED_ORIGINS__', apimCorsAllowedOriginsXml)
   }
   dependsOn: [
     apimFunctionKeyNamedValue

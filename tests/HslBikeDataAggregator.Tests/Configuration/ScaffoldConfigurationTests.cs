@@ -20,20 +20,13 @@ public sealed class ScaffoldConfigurationTests
     }
 
     [Fact]
-    public async Task LocalSettingsTemplate_ContainsGitHubPagesAndLocalhostCorsOrigins()
+    public async Task LocalSettingsTemplate_DoesNotContainHostSection()
     {
         var cancellationToken = TestContext.Current.CancellationToken;
         var json = await File.ReadAllTextAsync(GetRepositoryFilePath("src", "HslBikeDataAggregator", "local.settings.example.json"), cancellationToken);
         using var document = JsonDocument.Parse(json);
 
-        var corsOrigin = document.RootElement
-            .GetProperty("Host")
-            .GetProperty("CORS")
-            .GetString();
-
-        Assert.Contains("https://kuoste.github.io", corsOrigin);
-        Assert.Contains("https://tmikuoste.github.io", corsOrigin);
-        Assert.Contains("http://localhost:5291", corsOrigin);
+        Assert.False(document.RootElement.TryGetProperty("Host", out _));
     }
 
     [Fact]
