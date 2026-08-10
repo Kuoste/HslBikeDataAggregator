@@ -139,7 +139,7 @@ jobs:
                 "OpenData__VenueFillLevelSources__0__LocationUrlName=uimastadion"
 
       - name: Deploy Function App package
-        uses: Azure/functions-action@bc63708cc6539760eea18d8a7de4ce8ef5fdf593 # v1
+        uses: Azure/functions-action@c5060b3b8bb1ebbcb531abd00c822ecbaa8ea656 # v1
         with:
           app-name: ${{ env.AZURE_FUNCTION_APP_NAME }}
           package: ./artifacts/released-package.zip
