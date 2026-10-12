@@ -2,7 +2,7 @@
 
 ## Status
 
-Accepted — updated 2025-07-19 (revised polling interval and cold-start analysis)
+Accepted — updated 2025-07-19 (revised polling interval and cold-start analysis); updated 2026-10-12 (see below)
 
 ## Date
 
@@ -52,3 +52,18 @@ Basic station view is never blocked by the aggregator cold start.
 - Snapshot data can be up to 15 minutes stale; live station data (`GetStations`) relies on an on-demand Digitransit call and its 2-minute in-memory cache.
 - `GetStations` pays the full cold-start penalty plus an upstream Digitransit call when the cache is empty, making it the slowest endpoint on a cold start.
 - Blob storage and APIM add infrastructure dependencies.
+
+## Update 2026-10-12
+
+Telemetry showed that, with very low traffic, almost every visit hits a cold Function App instance behind a cold APIM gateway. Two assumptions above no longer hold:
+
+- **APIM caching does not mask cold starts.** The Consumption tier has no built-in cache, so the `cache-lookup` / `cache-store` policies were no-ops and have been removed (see ADR-003).
+- **The frontend no longer fetches stations from Digitransit directly.** All data flows through the aggregator, so the station view does depend on the backend cold start.
+
+Mitigations now in place:
+
+- The frontend wakes the backend with a plain request from `index.html` while the WASM runtime downloads, fetches stations in parallel with snapshots, caps requests at 15 s and retries the first load after 2, 5 and 10 s.
+- Blob access uses `ManagedIdentityCredential` directly instead of `DefaultAzureCredential`, avoiding credential-chain probing on each new instance.
+- Browsers cache the CORS preflight for an hour.
+
+Remaining options if cold starts are still too slow: configure an always-ready instance for the `http` group on Flex Consumption (fixed monthly cost), or let `GetStations` answer from a blob copy of the latest poll while the in-memory Digitransit cache is empty.

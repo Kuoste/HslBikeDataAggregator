@@ -116,7 +116,8 @@ All HTTP triggers use `AuthorizationLevel.Function`. Azure API Management inject
 ### APIM gateway policies
 
 - **Rate limiting**: 200 requests/minute globally (Consumption tier does not support per-IP keyed limits).
-- **Response caching**: 30 s for `/stations` and `/snapshots`; 120 s for `/open-data`; 3,600 s for `/stations/{id}/statistics`.
+- **No gateway response caching**: the Consumption tier has no built-in cache, so responses are cached by browsers via `Cache-Control` only.
+- **CORS**: preflight results are cacheable for one hour (`preflight-result-max-age`).
 - **Function key injection**: host key stored as a secret Named Value and set via `x-functions-key` header.
 - **CORS**: allows the configured frontend origins.
 
@@ -299,8 +300,7 @@ The template provisions:
 - **Storage diagnostic settings** (blob read/write/delete logs and transaction metrics)
 - **Azure API Management** Consumption instance with:
   - API operations for all HTTP endpoints
-  - Inbound policy: function key injection, CORS, global rate limiting (200 req/min), response caching
-  - Per-operation cache override for station statistics (3,600 s)
+  - Inbound policy: function key injection, CORS (preflight cached for 1 hour), global rate limiting (200 req/min)
 
 ### Resource provider prerequisites
 

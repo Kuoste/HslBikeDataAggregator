@@ -310,23 +310,24 @@ public sealed class DeploymentWorkflowConfigurationTests
     }
 
     [Fact]
-    public async Task Infrastructure_ApimConfiguresResponseCaching()
+    public async Task Infrastructure_ApimDoesNotUseCachePoliciesUnsupportedByConsumptionTier()
     {
         var cancellationToken = TestContext.Current.CancellationToken;
         var mainBicep = await File.ReadAllTextAsync(GetRepositoryFilePath("infra", "main.bicep"), cancellationToken);
 
-        Assert.Contains("cache-lookup", mainBicep, StringComparison.Ordinal);
-        Assert.Contains("cache-store", mainBicep, StringComparison.Ordinal);
+        // The Consumption tier has no built-in cache, so these policies would silently do nothing.
+        Assert.Contains("name: 'Consumption'", mainBicep, StringComparison.Ordinal);
+        Assert.DoesNotContain("<cache-lookup", mainBicep, StringComparison.Ordinal);
+        Assert.DoesNotContain("<cache-store", mainBicep, StringComparison.Ordinal);
     }
 
     [Fact]
-    public async Task Infrastructure_ApimOverridesStationStatisticsCacheDuration()
+    public async Task Infrastructure_ApimCorsPolicyAllowsBrowsersToCachePreflight()
     {
         var cancellationToken = TestContext.Current.CancellationToken;
         var mainBicep = await File.ReadAllTextAsync(GetRepositoryFilePath("infra", "main.bicep"), cancellationToken);
 
-        Assert.Contains("parent: apimGetStationStatistics", mainBicep, StringComparison.Ordinal);
-        Assert.Contains("cache-store duration=\"3600\"", mainBicep, StringComparison.Ordinal);
+        Assert.Contains("<allowed-methods preflight-result-max-age=\"3600\">", mainBicep, StringComparison.Ordinal);
     }
 
     [Fact]

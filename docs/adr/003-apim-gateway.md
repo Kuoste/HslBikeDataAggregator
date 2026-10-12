@@ -2,7 +2,7 @@
 
 ## Status
 
-Accepted
+Accepted — updated 2026-10-12 (response caching removed, CORS preflight caching added)
 
 ## Date
 
@@ -61,3 +61,8 @@ Place an Azure API Management (APIM) Consumption-tier instance in front of all H
 - APIM Consumption tier has a cold-start delay (~1-2 seconds) on idle periods.
 - Rate limiting is global (not per-IP) on Consumption tier — a burst of legitimate traffic can exhaust the shared allowance.
 - Frontend must be updated to call the APIM gateway URL instead of the Function App URL directly.
+
+## Update 2026-10-12
+
+- **Response caching removed.** The internal (built-in) APIM cache is not available in the Consumption tier, so the `cache-lookup` / `cache-store` policies above never cached anything (see [API Management caching overview](https://learn.microsoft.com/azure/api-management/caching-overview)). Gateway caching would require an external Redis cache, which is not justified for this workload. The policies were removed to avoid implying protection that does not exist; responses still carry `Cache-Control` headers for browser caching.
+- **CORS preflight caching added.** The frontend's `X-App-Source` header makes every request a non-simple CORS request. `preflight-result-max-age="3600"` on `<allowed-methods>` lets browsers reuse the `OPTIONS` result instead of repeating it before each call.
