@@ -36,7 +36,7 @@ This service is the **only component** that holds the HSL Digitransit API key. T
 ### API Gateway
 
 - Azure API Management (Consumption tier) sits in front of all HTTP endpoints.
-- APIM enforces global rate limiting (200 req/min) and response caching. Consumption tier does not support per-IP by-key policies.
+- APIM enforces global rate limiting (200 req/min). Consumption tier does not support per-IP by-key policies or the built-in response cache, so do not add `cache-lookup` / `cache-store` policies.
 - APIM injects the Function App host key — HTTP functions use `AuthorizationLevel.Function`, so direct calls without the key are rejected.
 - The Blazor frontend calls the APIM gateway URL, never the Function App URL directly.
 

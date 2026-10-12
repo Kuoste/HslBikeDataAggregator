@@ -53,7 +53,7 @@ var apimApiPolicyTemplate = '''
       <allowed-origins>
 __APIM_CORS_ALLOWED_ORIGINS__
       </allowed-origins>
-      <allowed-methods>
+      <allowed-methods preflight-result-max-age="3600">
         <method>GET</method>
       </allowed-methods>
       <allowed-headers>
@@ -61,14 +61,12 @@ __APIM_CORS_ALLOWED_ORIGINS__
       </allowed-headers>
     </cors>
     <rate-limit calls="200" renewal-period="60" />
-    <cache-lookup vary-by-developer="false" vary-by-developer-groups="false" />
   </inbound>
   <backend>
     <base />
   </backend>
   <outbound>
     <base />
-    <cache-store duration="30" />
   </outbound>
   <on-error>
     <base />
@@ -376,11 +374,16 @@ resource apimApi 'Microsoft.ApiManagement/service/apis@2024-05-01' = {
   }
 }
 
-// Inbound policy applied to all operations: function key injection, CORS,
-// global rate limiting and response caching.
+// Inbound policy applied to all operations: function key injection, CORS
+// and global rate limiting.
 // Note: Consumption tier only supports the basic rate-limit policy.
 // The quota policy is restricted to product scope and by-key variants
 // require Developer tier or above.
+// No cache-lookup/cache-store: the Consumption tier has no built-in cache, so
+// those policies are no-ops without an external Redis cache. Responses carry
+// Cache-Control headers for browser caching instead.
+// preflight-result-max-age lets browsers reuse the CORS preflight that the
+// X-App-Source header triggers instead of repeating it on every request.
 resource apimApiPolicy 'Microsoft.ApiManagement/service/apis/policies@2024-05-01' = {
   name: 'policy'
   parent: apimApi
@@ -393,34 +396,6 @@ resource apimApiPolicy 'Microsoft.ApiManagement/service/apis/policies@2024-05-01
   ]
 }
 
-// Override cache duration for the monthly station statistics endpoint.
-resource apimStationStatisticsCachePolicyFragment 'Microsoft.ApiManagement/service/apis/operations/policies@2024-05-01' = {
-  name: 'policy'
-  parent: apimGetStationStatistics
-  properties: {
-    format: 'xml'
-    value: '''
-<policies>
-  <inbound>
-    <base />
-    <cache-lookup vary-by-developer="false" vary-by-developer-groups="false" />
-  </inbound>
-  <backend>
-    <base />
-  </backend>
-  <outbound>
-    <base />
-    <cache-store duration="3600" />
-  </outbound>
-  <on-error>
-    <base />
-  </on-error>
-</policies>
-'''
-  }
-}
-
-
 // API operations — one per Function App HTTP endpoint.
 resource apimGetOpenData 'Microsoft.ApiManagement/service/apis/operations@2024-05-01' = {
   name: 'get-open-data'
@@ -429,32 +404,6 @@ resource apimGetOpenData 'Microsoft.ApiManagement/service/apis/operations@2024-0
     displayName: 'Get open data'
     method: 'GET'
     urlTemplate: '/open-data'
-  }
-}
-
-resource apimOpenDataCachePolicy 'Microsoft.ApiManagement/service/apis/operations/policies@2024-05-01' = {
-  name: 'policy'
-  parent: apimGetOpenData
-  properties: {
-    format: 'xml'
-    value: '''
-<policies>
-  <inbound>
-    <base />
-    <cache-lookup vary-by-developer="false" vary-by-developer-groups="false" />
-  </inbound>
-  <backend>
-    <base />
-  </backend>
-  <outbound>
-    <base />
-    <cache-store duration="120" />
-  </outbound>
-  <on-error>
-    <base />
-  </on-error>
-</policies>
-'''
   }
 }
 

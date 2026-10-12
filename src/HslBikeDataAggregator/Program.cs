@@ -1,4 +1,3 @@
-using Azure.Identity;
 using Azure.Storage.Blobs;
 
 using HslBikeDataAggregator.Configuration;
@@ -72,10 +71,7 @@ builder.Services.AddSingleton(provider =>
         var containerUri = new Uri($"https://{accountName}.blob.core.windows.net/{BikeDataBlobNames.ContainerName}");
 
         // Use user-assigned managed identity when a client ID is configured
-        var clientId = configuration["AzureWebJobsStorage:clientId"];
-        var credential = string.IsNullOrWhiteSpace(clientId)
-            ? new DefaultAzureCredential()
-            : new DefaultAzureCredential(new DefaultAzureCredentialOptions { ManagedIdentityClientId = clientId });
+        var credential = StorageCredentialFactory.Create(configuration["AzureWebJobsStorage:clientId"]);
 
         return new BlobContainerClient(containerUri, credential);
     }

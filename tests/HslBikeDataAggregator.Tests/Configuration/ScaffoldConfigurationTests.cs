@@ -20,6 +20,23 @@ public sealed class ScaffoldConfigurationTests
     }
 
     [Fact]
+    public async Task GlobalJson_OptsIntoMicrosoftTestingPlatformRunner()
+    {
+        // xunit.v3 4.x runs on Microsoft.Testing.Platform, which the .NET 10 SDK only supports
+        // through dotnet test when the repository opts in via global.json.
+        var cancellationToken = TestContext.Current.CancellationToken;
+        var json = await File.ReadAllTextAsync(GetRepositoryFilePath("global.json"), cancellationToken);
+        using var document = JsonDocument.Parse(json);
+
+        var runner = document.RootElement
+            .GetProperty("test")
+            .GetProperty("runner")
+            .GetString();
+
+        Assert.Equal("Microsoft.Testing.Platform", runner);
+    }
+
+    [Fact]
     public async Task LocalSettingsTemplate_DoesNotContainHostSection()
     {
         var cancellationToken = TestContext.Current.CancellationToken;
