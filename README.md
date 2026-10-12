@@ -2,7 +2,7 @@
 
 C# Azure Functions backend for Helsinki city bike data aggregation.
 
-This service is the **only component** that holds the HSL Digitransit API key. It polls the Digitransit GraphQL API for live station availability, downloads open trip-history CSVs for monthly demand statistics, stores all aggregated data in Azure Blob Storage, and serves read-optimised JSON endpoints consumed by the [`HslBikeApp`](https://github.com/TmiKuoste/HslBikeApp) Blazor frontend.
+This service is the **only component** that holds the HSL Digitransit API key. It polls the Digitransit GraphQL API for live station availability, downloads open trip-history CSVs for monthly demand statistics, stores all aggregated data in Azure Blob Storage, and serves read-optimised JSON endpoints consumed by the [`HslBikeApp`](https://github.com/Kuoste/HslBikeApp) Blazor frontend.
 
 ## Architecture
 
@@ -16,7 +16,7 @@ This service is the **only component** that holds the HSL Digitransit API key. I
 | Observability | Application Insights backed by Log Analytics workspace |
 | Auth (Azure) | User-assigned managed identity — no connection strings in production |
 | Auth (GitHub) | OpenID Connect federation — no long-lived secrets |
-| Frontend | [`HslBikeApp`](https://github.com/TmiKuoste/HslBikeApp) (Blazor WebAssembly, GitHub Pages) |
+| Frontend | [`HslBikeApp`](https://github.com/Kuoste/HslBikeApp) (Blazor WebAssembly, GitHub Pages) |
 
 ### Data flow
 
