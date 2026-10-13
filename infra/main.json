@@ -4,8 +4,8 @@
   "metadata": {
     "_generator": {
       "name": "bicep",
-      "version": "0.42.1.51946",
-      "templateHash": "12666906528667991272"
+      "version": "0.46.1.21595",
+      "templateHash": "9029142938262379824"
     }
   },
   "parameters": {
@@ -42,11 +42,8 @@
     },
     "corsAllowedOrigins": {
       "type": "array",
-      "defaultValue": [
-        "https://kuoste.github.io"
-      ],
       "metadata": {
-        "description": "Frontend origins allowed by Azure Functions CORS configuration."
+        "description": "Frontend origins allowed by the API Management CORS policy."
       }
     },
     "pollIntervalCron": {
@@ -70,6 +67,13 @@
       "metadata": {
         "description": "Cron expression used by the ProcessStationHistory timer trigger."
       }
+    },
+    "openDataPollIntervalCron": {
+      "type": "string",
+      "defaultValue": "0 */15 * * * *",
+      "metadata": {
+        "description": "Cron expression used by the PollOpenData timer trigger."
+      }
     }
   },
   "variables": {
@@ -80,8 +84,12 @@
     "storageAccountName": "[take(format('st{0}{1}', toLower(replace(replace(parameters('functionAppName'), '-', ''), '_', '')), uniqueString(resourceGroup().id)), 24)]",
     "deploymentStorageContainerName": "deployment-packages",
     "deploymentStorageContainerUrl": "[format('https://{0}.blob.{1}/{2}', variables('storageAccountName'), environment().suffixes.storage, variables('deploymentStorageContainerName'))]",
-    "storageBlobDataOwnerRoleId": "b7e6dc6d-f1e8-4753-8033-0f276bb0955b",
-    "storageQueueDataContributorRoleId": "974c5e8b-45b9-4653-ba55-5f855dd0fb88"
+    "apimCorsAllowedOriginsXml": "[join(map(parameters('corsAllowedOrigins'), lambda('origin', format('        <origin>{0}</origin>', lambdaVariables('origin')))), '\n')]",
+    "apimApiPolicyTemplate": "<policies>\r\n  <inbound>\r\n    <base />\r\n    <set-header name=\"x-functions-key\" exists-action=\"override\">\r\n      <value>{{function-host-key}}</value>\r\n    </set-header>\r\n    <cors allow-credentials=\"false\">\r\n      <allowed-origins>\r\n__APIM_CORS_ALLOWED_ORIGINS__\r\n      </allowed-origins>\r\n      <allowed-methods preflight-result-max-age=\"3600\">\r\n        <method>GET</method>\r\n      </allowed-methods>\r\n      <allowed-headers>\r\n        <header>*</header>\r\n      </allowed-headers>\r\n    </cors>\r\n    <rate-limit calls=\"200\" renewal-period=\"60\" />\r\n  </inbound>\r\n  <backend>\r\n    <base />\r\n  </backend>\r\n  <outbound>\r\n    <base />\r\n  </outbound>\r\n  <on-error>\r\n    <base />\r\n  </on-error>\r\n</policies>\r\n",
+    "roleDefinitionIds": {
+      "storageBlobDataOwner": "b7e6dc6d-f1e8-4753-8033-0f276bb0955b",
+      "storageQueueDataContributor": "974c5e8b-45b9-4653-ba55-5f855dd0fb88"
+    }
   },
   "resources": [
     {
@@ -260,12 +268,12 @@
             {
               "name": "HistoryProcessingCron",
               "value": "[parameters('historyProcessingCron')]"
+            },
+            {
+              "name": "OpenDataPollIntervalCron",
+              "value": "[parameters('openDataPollIntervalCron')]"
             }
           ],
-          "cors": {
-            "allowedOrigins": "[parameters('corsAllowedOrigins')]",
-            "supportCredentials": false
-          },
           "ftpsState": "Disabled",
           "http20Enabled": true,
           "minTlsVersion": "1.2"
@@ -287,9 +295,9 @@
       "type": "Microsoft.Authorization/roleAssignments",
       "apiVersion": "2022-04-01",
       "scope": "[resourceId('Microsoft.Storage/storageAccounts', variables('storageAccountName'))]",
-      "name": "[guid(resourceId('Microsoft.Storage/storageAccounts', variables('storageAccountName')), resourceId('Microsoft.ManagedIdentity/userAssignedIdentities', variables('managedIdentityName')), variables('storageBlobDataOwnerRoleId'))]",
+      "name": "[guid(resourceId('Microsoft.Storage/storageAccounts', variables('storageAccountName')), resourceId('Microsoft.ManagedIdentity/userAssignedIdentities', variables('managedIdentityName')), variables('roleDefinitionIds').storageBlobDataOwner)]",
       "properties": {
-        "roleDefinitionId": "[subscriptionResourceId('Microsoft.Authorization/roleDefinitions', variables('storageBlobDataOwnerRoleId'))]",
+        "roleDefinitionId": "[subscriptionResourceId('Microsoft.Authorization/roleDefinitions', variables('roleDefinitionIds').storageBlobDataOwner)]",
         "principalId": "[reference(resourceId('Microsoft.ManagedIdentity/userAssignedIdentities', variables('managedIdentityName')), '2023-01-31').principalId]",
         "principalType": "ServicePrincipal"
       },
@@ -302,9 +310,9 @@
       "type": "Microsoft.Authorization/roleAssignments",
       "apiVersion": "2022-04-01",
       "scope": "[resourceId('Microsoft.Storage/storageAccounts', variables('storageAccountName'))]",
-      "name": "[guid(resourceId('Microsoft.Storage/storageAccounts', variables('storageAccountName')), resourceId('Microsoft.ManagedIdentity/userAssignedIdentities', variables('managedIdentityName')), variables('storageQueueDataContributorRoleId'))]",
+      "name": "[guid(resourceId('Microsoft.Storage/storageAccounts', variables('storageAccountName')), resourceId('Microsoft.ManagedIdentity/userAssignedIdentities', variables('managedIdentityName')), variables('roleDefinitionIds').storageQueueDataContributor)]",
       "properties": {
-        "roleDefinitionId": "[subscriptionResourceId('Microsoft.Authorization/roleDefinitions', variables('storageQueueDataContributorRoleId'))]",
+        "roleDefinitionId": "[subscriptionResourceId('Microsoft.Authorization/roleDefinitions', variables('roleDefinitionIds').storageQueueDataContributor)]",
         "principalId": "[reference(resourceId('Microsoft.ManagedIdentity/userAssignedIdentities', variables('managedIdentityName')), '2023-01-31').principalId]",
         "principalType": "ServicePrincipal"
       },
@@ -403,7 +411,7 @@
       "name": "[format('{0}/{1}/{2}', parameters('apimServiceName'), 'hsl-bike-api', 'policy')]",
       "properties": {
         "format": "xml",
-        "value": "<policies>\r\n  <inbound>\r\n    <base />\r\n    <set-header name=\"x-functions-key\" exists-action=\"override\">\r\n      <value>{{function-host-key}}</value>\r\n    </set-header>\r\n    <cors allow-credentials=\"false\">\r\n      <allowed-origins>\r\n        <origin>https://kuoste.github.io</origin>\r\n        <origin>https://tmikuoste.github.io</origin>\r\n      </allowed-origins>\r\n      <allowed-methods>\r\n        <method>GET</method>\r\n      </allowed-methods>\r\n      <allowed-headers>\r\n        <header>*</header>\r\n      </allowed-headers>\r\n    </cors>\r\n    <rate-limit calls=\"200\" renewal-period=\"60\" />\r\n    <cache-lookup vary-by-developer=\"false\" vary-by-developer-groups=\"false\" />\r\n  </inbound>\r\n  <backend>\r\n    <base />\r\n  </backend>\r\n  <outbound>\r\n    <base />\r\n    <cache-store duration=\"30\" />\r\n  </outbound>\r\n  <on-error>\r\n    <base />\r\n  </on-error>\r\n</policies>\r\n"
+        "value": "[replace(variables('apimApiPolicyTemplate'), '__APIM_CORS_ALLOWED_ORIGINS__', variables('apimCorsAllowedOriginsXml'))]"
       },
       "dependsOn": [
         "[resourceId('Microsoft.ApiManagement/service/apis', parameters('apimServiceName'), 'hsl-bike-api')]",
@@ -411,15 +419,16 @@
       ]
     },
     {
-      "type": "Microsoft.ApiManagement/service/apis/operations/policies",
+      "type": "Microsoft.ApiManagement/service/apis/operations",
       "apiVersion": "2024-05-01",
-      "name": "[format('{0}/{1}/{2}/{3}', parameters('apimServiceName'), 'hsl-bike-api', 'get-station-statistics', 'policy')]",
+      "name": "[format('{0}/{1}/{2}', parameters('apimServiceName'), 'hsl-bike-api', 'get-open-data')]",
       "properties": {
-        "format": "xml",
-        "value": "<policies>\r\n  <inbound>\r\n    <base />\r\n    <cache-lookup vary-by-developer=\"false\" vary-by-developer-groups=\"false\" />\r\n  </inbound>\r\n  <backend>\r\n    <base />\r\n  </backend>\r\n  <outbound>\r\n    <base />\r\n    <cache-store duration=\"3600\" />\r\n  </outbound>\r\n  <on-error>\r\n    <base />\r\n  </on-error>\r\n</policies>\r\n"
+        "displayName": "Get open data",
+        "method": "GET",
+        "urlTemplate": "/open-data"
       },
       "dependsOn": [
-        "[resourceId('Microsoft.ApiManagement/service/apis/operations', parameters('apimServiceName'), 'hsl-bike-api', 'get-station-statistics')]"
+        "[resourceId('Microsoft.ApiManagement/service/apis', parameters('apimServiceName'), 'hsl-bike-api')]"
       ]
     },
     {

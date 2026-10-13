@@ -309,6 +309,34 @@ public sealed class DeploymentWorkflowConfigurationTests
         Assert.DoesNotContain("<quota", mainBicep, StringComparison.Ordinal);
     }
 
+    [Theory]
+    [InlineData("dev.bicepparam")]
+    [InlineData("prod.bicepparam")]
+    [InlineData("dev.json")]
+    [InlineData("prod.json")]
+    public async Task InfrastructureParameters_AllowOnlyLiveFrontendOrigin(string fileName)
+    {
+        var cancellationToken = TestContext.Current.CancellationToken;
+        var parameters = await File.ReadAllTextAsync(GetRepositoryFilePath("infra", fileName), cancellationToken);
+
+        Assert.Contains("https://kuoste.github.io", parameters, StringComparison.Ordinal);
+        Assert.DoesNotContain("tmikuoste", parameters, StringComparison.OrdinalIgnoreCase);
+    }
+
+    [Theory]
+    [InlineData("dev.json")]
+    [InlineData("prod.json")]
+    [InlineData("main.json")]
+    public async Task InfrastructureJson_IsValidJson(string fileName)
+    {
+        var cancellationToken = TestContext.Current.CancellationToken;
+        var json = await File.ReadAllTextAsync(GetRepositoryFilePath("infra", fileName), cancellationToken);
+
+        using var document = System.Text.Json.JsonDocument.Parse(json);
+
+        Assert.Equal(System.Text.Json.JsonValueKind.Object, document.RootElement.ValueKind);
+    }
+
     [Fact]
     public async Task Infrastructure_ApimDoesNotUseCachePoliciesUnsupportedByConsumptionTier()
     {

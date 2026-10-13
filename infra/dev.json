@@ -14,7 +14,6 @@
     "corsAllowedOrigins": {
       "value": [
         "https://kuoste.github.io",
-        "https://tmikuoste.github.io",
         "http://localhost:5291"
       ]
     },
