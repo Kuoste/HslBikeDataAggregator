@@ -9,7 +9,9 @@ Helsinki city bike data backend. Part of a two-repo system:
 | Repo | Role | Tech | Hosting |
 |---|---|---|---|
 | **HslBikeApp** | Blazor WASM frontend | .NET 10, Blazor WebAssembly, Leaflet.js | GitHub Pages |
-| **HslBikeDataAggregator** (this repo) | C# backend service | .NET 10, Azure Functions (isolated worker), Azure API Management | Azure Functions (Flex Consumption) |
+| **HslBikeDataAggregator** (this repo) | C# backend service | .NET 10, Azure Functions (isolated worker), Azure API Management | None — Azure resources deleted after the 2026 season; planned to move to a self-hosted server for 2027 |
+
+- The deploy workflows (`deploy-dev.yml`, `deploy-prod.yml`) are manual-only. Do not add a push trigger back: the Azure resources have been deleted and an automatic deploy would recreate them.
 
 ## Architecture
 

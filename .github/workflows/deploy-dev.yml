@@ -1,9 +1,8 @@
 name: Deploy dev
 
+# Manual only: the Azure resources were removed after the 2026 season, and an automatic
+# deploy on push to main would recreate them.
 on:
-  push:
-    branches:
-      - main
   workflow_dispatch:
 
 permissions:
