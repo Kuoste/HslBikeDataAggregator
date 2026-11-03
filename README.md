@@ -2,6 +2,8 @@
 
 C# Azure Functions backend for Helsinki city bike data aggregation.
 
+> **Status — off-season (winter 2026–27):** the 2026 bike season is over and all Azure resources (Function App, storage, API Management, monitoring) have been deleted. The service is not running anywhere, and the [`HslBikeApp`](https://github.com/Kuoste/HslBikeApp) frontend shows an off-season notice. For the 2027 season the plan is to run the service on a self-hosted server instead of Azure. The Azure infrastructure and deploy workflows are kept in the repository for reference, but deployments are manual-only so that merging to `main` does not recreate the deleted resources.
+
 This service is the **only component** that holds the HSL Digitransit API key. It polls the Digitransit GraphQL API for live station availability, downloads open trip-history CSVs for monthly demand statistics, stores all aggregated data in Azure Blob Storage, and serves read-optimised JSON endpoints consumed by the [`HslBikeApp`](https://github.com/Kuoste/HslBikeApp) Blazor frontend.
 
 ## Architecture
@@ -275,12 +277,14 @@ From `src/HslBikeDataAggregator`:
 func start
 ```
 
-## Azure deployment
+## Azure deployment (retired after the 2026 season)
+
+> The Azure resources were deleted in November 2026 and are not expected to come back; the sections below describe how the service was deployed during the 2026 season. Running either deploy workflow would recreate the resources and start incurring costs again.
 
 Deployment is split into `dev` and `prod` environments.
 
-- Pull requests run **CI only** (build, test, Bicep validation).
-- Pushes to `main` deploy automatically to the **dev** Azure environment.
+- Pull requests and pushes to `main` run **CI only** (build, test, Bicep validation).
+- Dev deploys run manually through the **Deploy dev** workflow. (During the 2026 season they ran automatically on every push to `main`.)
 - Production deploys run manually through the **Deploy prod** workflow (restricted to the `main` branch) and should be protected with a GitHub environment approval.
 
 ### Infrastructure
@@ -354,7 +358,7 @@ One-time Azure setup:
 | Workflow | File | Trigger | Purpose |
 |---|---|---|---|
 | CI | `.github/workflows/ci.yml` | Push/PR to `main` | Build, test, validate Bicep templates |
-| Deploy dev | `.github/workflows/deploy-dev.yml` | Push to `main` | Deploy infrastructure and app code to `dev` |
+| Deploy dev | `.github/workflows/deploy-dev.yml` | Manual (`workflow_dispatch`) | Deploy infrastructure and app code to `dev` |
 | Deploy prod | `.github/workflows/deploy-prod.yml` | Manual (`workflow_dispatch`) | Deploy infrastructure and app code to `prod` |
 
 Each deploy workflow: restores → builds → tests → publishes → signs in to Azure → creates/updates the resource group → purges any soft-deleted APIM instance → deploys Bicep infrastructure → configures app settings → deploys the Function App zip package.

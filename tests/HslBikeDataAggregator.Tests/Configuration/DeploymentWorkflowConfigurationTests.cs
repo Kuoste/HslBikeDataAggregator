@@ -35,6 +35,21 @@ public sealed class DeploymentWorkflowConfigurationTests
         Assert.Contains("--parameters infra/dev.bicepparam", yaml, StringComparison.Ordinal);
     }
 
+    [Theory]
+    [InlineData("deploy-dev.yml")]
+    [InlineData("deploy-prod.yml")]
+    public async Task DeployWorkflows_RunOnlyOnManualDispatch(string workflowFileName)
+    {
+        // The Azure resources were removed after the 2026 season; a deploy on push would recreate them.
+        var cancellationToken = TestContext.Current.CancellationToken;
+        var yaml = await File.ReadAllTextAsync(GetRepositoryFilePath(".github", "workflows", workflowFileName), cancellationToken);
+        var triggers = yaml[yaml.IndexOf("\non:", StringComparison.Ordinal)..yaml.IndexOf("\npermissions:", StringComparison.Ordinal)];
+
+        Assert.Contains("workflow_dispatch:", triggers, StringComparison.Ordinal);
+        Assert.DoesNotContain("push:", triggers, StringComparison.Ordinal);
+        Assert.DoesNotContain("pull_request:", triggers, StringComparison.Ordinal);
+    }
+
     [Fact]
     public async Task DeployProdWorkflow_TargetsProdEnvironment()
     {
